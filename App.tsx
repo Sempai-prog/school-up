@@ -28,21 +28,26 @@ const App: React.FC = () => {
   const [isContentLoading, setIsContentLoading] = useState(false);
 
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [gradeLevel, setGradeLevel] = useState<GradeLevel>('6eme'); 
+  const [gradeLevel, setGradeLevel] = useState<GradeLevel>('3eme'); // Default to 3eme for demo content
   const [activeTab, setActiveTab] = useState<Tab>(Tab.DASHBOARD);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [user, setUser] = useState<User>(MOCK_USER); 
   
-  // --- CORE STATE: SOURCE OF TRUTH ---
-  // We deep copy the initial constant so we can mutate status (locked -> current -> completed)
+  // --- CORE STATE: SOURCE OF TRUTH (WITH PERSISTENCE) ---
   const [curriculum, setCurriculum] = useState(() => {
     try {
-        return JSON.parse(JSON.stringify(INITIAL_MODULES));
+        const saved = localStorage.getItem('skoolup_curriculum_v2');
+        return saved ? JSON.parse(saved) : JSON.parse(JSON.stringify(INITIAL_MODULES));
     } catch (e) {
-        console.error("Failed to initialize curriculum", e);
+        console.error("Failed to load curriculum", e);
         return INITIAL_MODULES;
     }
   });
+
+  // Persist State Changes
+  useEffect(() => {
+    localStorage.setItem('skoolup_curriculum_v2', JSON.stringify(curriculum));
+  }, [curriculum]);
 
   // Navigation State
   const [currentView, setCurrentView] = useState<ViewState>('dashboard');
@@ -106,107 +111,81 @@ const App: React.FC = () => {
 
   // --- PROGRESSION ENGINE (THE BRAIN) ---
 
-  /**
-   * Updates the step status to 'completed' and unlocks the next step.
-   * This runs in the global state to ensure data persistence.
-   */
   const handleStepComplete = (chapterId: string, stepId: string) => {
     if (!selectedSubjectId) return;
 
     setCurriculum((prev: any) => {
-        // Deep copy to ensure immutability
+        // Deep clone for immutability
         const newCurriculum = JSON.parse(JSON.stringify(prev));
+        const modules = newCurriculum[gradeLevel]?.[selectedSubjectId];
         
-        // Fail-safe
-        if (!newCurriculum[gradeLevel]?.[selectedSubjectId]) return prev;
+        if (!modules) return prev;
 
-        const modules = newCurriculum[gradeLevel][selectedSubjectId];
-
-        // Traverse to find the chapter
+        // Traverse to find chapter
         for (const mod of modules) {
             for (const unit of mod.units) {
                 const chapter = unit.chapters.find((c: any) => c.id === chapterId);
-                
                 if (chapter) {
                     const stepIndex = chapter.steps.findIndex((s: any) => s.id === stepId);
-                    
                     if (stepIndex !== -1) {
-                        // 1. Mark current step as completed
+                        // 1. Complete Current
                         chapter.steps[stepIndex].status = 'completed';
                         
-                        // 2. Unlock next step if exists
+                        // 2. Unlock Next Step
                         if (stepIndex < chapter.steps.length - 1) {
-                            if (chapter.steps[stepIndex + 1].status === 'locked') {
-                                chapter.steps[stepIndex + 1].status = 'current';
-                            }
+                            chapter.steps[stepIndex + 1].status = 'current';
                         }
                     }
-                    return newCurriculum; // Return updated state
+                    return newCurriculum;
+                }
+            }
+        }
+        return prev;
+    });
+  };
+
+  const handleChapterComplete = (chapterId: string) => {
+    if (!selectedSubjectId) return;
+
+    // 1. Award XP Logic
+    // We do this check against the previous state to avoid double rewarding on re-renders
+    let xpAwarded = 0;
+    
+    setCurriculum((prev: any) => {
+        const newCurriculum = JSON.parse(JSON.stringify(prev));
+        const modules = newCurriculum[gradeLevel]?.[selectedSubjectId];
+        if (!modules) return prev;
+
+        // Flatten chapters for easy navigation
+        let allChapters: any[] = [];
+        modules.forEach((m: any) => m.units.forEach((u: any) => allChapters.push(...u.chapters)));
+
+        const currentIndex = allChapters.findIndex((c: any) => c.id === chapterId);
+        
+        if (currentIndex !== -1) {
+            const currentChapter = allChapters[currentIndex];
+            
+            // Check if actually new completion
+            if (currentChapter.status !== 'completed') {
+                currentChapter.status = 'completed';
+                xpAwarded = currentChapter.xpReward || 100;
+
+                // UNLOCK NEXT CHAPTER
+                if (currentIndex < allChapters.length - 1) {
+                    allChapters[currentIndex + 1].status = 'current';
                 }
             }
         }
         return newCurriculum;
     });
-  };
 
-  /**
-   * Finalizes chapter completion, awards XP, and updates global status.
-   */
-  const handleChapterComplete = (chapterId: string) => {
-    if (!selectedSubjectId) return;
-
-    // We need to look up the LIVE state
-    const modules = curriculum[gradeLevel]?.[selectedSubjectId];
-    if (!modules) return;
-
-    let liveChapter: Chapter | null = null;
-    
-    // Find Chapter in State to check logic
-    for (const mod of modules) {
-        for (const unit of mod.units) {
-            const c = unit.chapters.find((ch: any) => ch.id === chapterId);
-            if (c) { liveChapter = c; break; }
-        }
-        if (liveChapter) break;
+    if (xpAwarded > 0) {
+        updateXp(user.xp + xpAwarded);
     }
 
-    if (!liveChapter) return;
-
-    // Check strict completion: All steps must be completed
-    const allStepsDone = liveChapter.steps.every((s: any) => s.status === 'completed');
-
-    if (allStepsDone) {
-        // 1. Award XP (Only if not already completed to avoid farming)
-        if (liveChapter.status !== 'completed') {
-            const xpReward = liveChapter.xpReward || 100;
-            updateXp(user.xp + xpReward);
-        }
-
-        // 2. Mark Chapter Completed in State
-        setCurriculum((prev: any) => {
-            const newCurriculum = JSON.parse(JSON.stringify(prev));
-            const currentGradeModules = newCurriculum[gradeLevel][selectedSubjectId];
-
-            for (const mod of currentGradeModules) {
-                for (const unit of mod.units) {
-                    const chapter = unit.chapters.find((c: any) => c.id === chapterId);
-                    if (chapter) {
-                        chapter.status = 'completed';
-                        
-                        // Optional: Logic to unlock the NEXT chapter could go here
-                        // e.g. find current chapter index, unlock index + 1
-                    }
-                }
-            }
-            return newCurriculum;
-        });
-    }
-
-    // 3. Return to Map
     setCurrentView('subject_map');
   };
 
-  // --- UTILS ---
   const updateXp = (newXp: number) => {
       setUser(prev => ({ ...prev, xp: newXp }));
   };
@@ -252,7 +231,7 @@ const App: React.FC = () => {
 
       case 'subject_map':
         const subject = CURRICULUM_SUBJECTS[gradeLevel].find(s => s.id === selectedSubjectId);
-        // CRITICAL: Pass the LIVE curriculum state, not static constants
+        // CRITICAL: Pass the LIVE curriculum state
         const modules = selectedSubjectId ? curriculum[gradeLevel]?.[selectedSubjectId] : [];
         if (!subject || !modules) return <div>Sujet introuvable</div>;
         return (
@@ -268,8 +247,7 @@ const App: React.FC = () => {
       case 'lesson':
         if (!selectedChapterId) return <div>Erreur</div>;
         
-        // CRITICAL: We must find the LIVE chapter object from the state
-        // We cannot rely on a stale object.
+        // CRITICAL: FIND LIVE CHAPTER
         let liveChapter: Chapter | null = null;
         if (selectedSubjectId) {
              const mods = curriculum[gradeLevel]?.[selectedSubjectId];

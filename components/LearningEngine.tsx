@@ -4,49 +4,12 @@ import {
     CheckCircle2, ArrowRight, Trophy, XCircle, 
     ChevronLeft, MessageSquare, Star, Send, MoveDown, MousePointerClick 
 } from 'lucide-react';
-import { Chapter, LessonStep, ParsonsItem, QuizContent, Comment } from '../types';
+import { Chapter, ParsonsItem, QuizContent, Comment } from '../types';
 import TheoryPlayer from './TheoryPlayer';
 import { LessonSkeleton } from './Loaders';
 import { motion, AnimatePresence } from 'framer-motion';
 
-// --- CONSTANTS & MOCKS ---
-const MOCK_COMMENTS: Comment[] = [
-    { id: '1', author: 'Sarah K.', avatar: 'https://i.pravatar.cc/150?u=1', text: 'Merci pour cette explication claire !', date: 'Il y a 2j', rating: 5 },
-    { id: '2', author: 'David O.', avatar: 'https://i.pravatar.cc/150?u=2', text: 'Je n\'ai pas bien compris la partie sur les vecteurs.', date: 'Il y a 1j', rating: 3 },
-];
-
-// ============================================================================
-// SUB-COMPONENTS
-// ============================================================================
-
-/**
- * SUCCESS VIEW
- * Displayed when a non-theory step is validated successfully.
- */
-const SuccessView: React.FC<{ onNext: () => void, isLastStep: boolean }> = ({ onNext, isLastStep }) => {
-    return (
-        <motion.div 
-            initial={{ opacity: 0, scale: 0.9 }} 
-            animate={{ opacity: 1, scale: 1 }} 
-            className="h-full flex flex-col items-center justify-center p-6 text-center"
-        >
-            <div className="relative mb-8">
-                <div className="absolute inset-0 bg-emerald-200 rounded-full blur-2xl opacity-40 animate-pulse"></div>
-                <div className="w-32 h-32 bg-gradient-to-tr from-emerald-400 to-teal-500 text-white rounded-[32px] flex items-center justify-center shadow-xl shadow-emerald-200 rotate-3">
-                    <Trophy size={64} />
-                </div>
-            </div>
-            <h2 className="text-3xl font-bold text-slate-800 mb-2">Excellent !</h2>
-            <p className="text-slate-500 mb-10 text-lg">Tu maîtrises ce point à la perfection.</p>
-            <button 
-                onClick={onNext} 
-                className="w-full max-w-xs py-4 bg-slate-900 text-white rounded-2xl font-bold shadow-xl shadow-slate-300 hover:shadow-2xl hover:scale-105 transition-all flex items-center justify-center gap-2"
-            >
-                {isLastStep ? 'Terminer le Chapitre' : 'Continuer'} <ArrowRight size={20} />
-            </button>
-        </motion.div>
-    );
-};
+// --- SUB COMPONENTS ---
 
 /**
  * SEQUENCE BUILDER (LUDIC PARSONS)
@@ -57,6 +20,7 @@ const SequenceBuilder: React.FC<{ items: ParsonsItem[], onValidate: (success: bo
     const [answer, setAnswer] = useState<ParsonsItem[]>([]);
     const [isError, setIsError] = useState(false);
 
+    // Initialize randomized pool
     useEffect(() => {
         setPool([...initialItems].sort(() => Math.random() - 0.5));
         setAnswer([]);
@@ -76,7 +40,7 @@ const SequenceBuilder: React.FC<{ items: ParsonsItem[], onValidate: (success: bo
 
     const checkOrder = () => {
         const currentIds = answer.map(i => i.id).join(',');
-        const correctIds = initialItems.map(i => i.id).join(',');
+        const correctIds = initialItems.map(i => i.id).join(','); // Correct order comes from props
         
         if (currentIds === correctIds) {
             onValidate(true);
@@ -158,7 +122,6 @@ const SequenceBuilder: React.FC<{ items: ParsonsItem[], onValidate: (success: bo
 
 /**
  * QUIZ PLAYER
- * Standard Multiple Choice Question.
  */
 const QuizPlayer: React.FC<{ quiz: QuizContent, onValidate: (success: boolean) => void }> = ({ quiz, onValidate }) => {
     const [selectedOption, setSelectedOption] = useState<string | null>(null);
@@ -201,101 +164,30 @@ const QuizPlayer: React.FC<{ quiz: QuizContent, onValidate: (success: boolean) =
 };
 
 /**
- * FEEDBACK DRAWER
- * Overlay for comments and feedback.
+ * SUCCESS VIEW
  */
-const FeedbackDrawer: React.FC<{ isOpen: boolean, onClose: () => void }> = ({ isOpen, onClose }) => {
-    const [rating, setRating] = useState(0);
-    const [comment, setComment] = useState('');
-    const [comments, setComments] = useState<Comment[]>(MOCK_COMMENTS);
-
-    const handleSubmit = () => {
-        if (!comment.trim()) return;
-        const newComment: Comment = {
-            id: Date.now().toString(),
-            author: 'Moi',
-            avatar: 'https://picsum.photos/id/64/200/200', 
-            text: comment,
-            date: 'À l\'instant',
-            rating: rating || 5
-        };
-        setComments([newComment, ...comments]);
-        setComment('');
-        setRating(0);
-    };
-
+const SuccessView: React.FC<{ onNext: () => void, isLastStep: boolean }> = ({ onNext, isLastStep }) => {
     return (
-        <AnimatePresence>
-            {isOpen && (
-                <>
-                    <motion.div 
-                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                        onClick={onClose}
-                        className="absolute inset-0 bg-black/40 backdrop-blur-sm z-50"
-                    />
-                    <motion.div 
-                        initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
-                        transition={{ type: "spring", bounce: 0, duration: 0.4 }}
-                        className="absolute bottom-0 left-0 right-0 bg-white rounded-t-[32px] z-50 h-[80%] flex flex-col shadow-2xl"
-                    >
-                        <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-                            <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
-                                <MessageSquare className="text-indigo-500" size={20} />
-                                Avis & Questions
-                            </h3>
-                            <button onClick={onClose} className="p-2 bg-slate-100 rounded-full text-slate-500"><XCircle size={20} /></button>
-                        </div>
-                        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                                <div className="flex justify-center gap-2 mb-4">
-                                    {[1, 2, 3, 4, 5].map((star) => (
-                                        <button key={star} onClick={() => setRating(star)} className="p-1 transition-transform hover:scale-110">
-                                            <Star size={24} className={rating >= star ? "text-yellow-400 fill-yellow-400" : "text-slate-300"} />
-                                        </button>
-                                    ))}
-                                </div>
-                                <div className="flex gap-2">
-                                    <input 
-                                        type="text" 
-                                        placeholder="Poser une question..." 
-                                        value={comment}
-                                        onChange={(e) => setComment(e.target.value)}
-                                        className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                                        onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
-                                    />
-                                    <button 
-                                        onClick={handleSubmit}
-                                        disabled={!comment.trim()}
-                                        className="p-3 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-200 disabled:opacity-50 disabled:shadow-none"
-                                    >
-                                        <Send size={18} />
-                                    </button>
-                                </div>
-                            </div>
-                            <div className="space-y-4">
-                                {comments.map((c) => (
-                                    <motion.div key={c.id} layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex gap-4">
-                                        <img src={c.avatar} alt={c.author} className="w-10 h-10 rounded-full border border-slate-100" />
-                                        <div className="flex-1">
-                                            <div className="flex items-center justify-between mb-1">
-                                                <h4 className="font-bold text-sm text-slate-800">{c.author}</h4>
-                                                <span className="text-[10px] text-slate-400">{c.date}</span>
-                                            </div>
-                                            <div className="flex mb-1">
-                                                {[...Array(5)].map((_, i) => (
-                                                    <Star key={i} size={10} className={i < (c.rating || 0) ? "text-yellow-400 fill-yellow-400" : "text-slate-200"} />
-                                                ))}
-                                            </div>
-                                            <p className="text-sm text-slate-600 bg-slate-50 p-3 rounded-r-2xl rounded-bl-2xl">{c.text}</p>
-                                        </div>
-                                    </motion.div>
-                                ))}
-                            </div>
-                        </div>
-                    </motion.div>
-                </>
-            )}
-        </AnimatePresence>
+        <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }} 
+            animate={{ opacity: 1, scale: 1 }} 
+            className="h-full flex flex-col items-center justify-center p-6 text-center"
+        >
+            <div className="relative mb-8">
+                <div className="absolute inset-0 bg-emerald-200 rounded-full blur-2xl opacity-40 animate-pulse"></div>
+                <div className="w-32 h-32 bg-gradient-to-tr from-emerald-400 to-teal-500 text-white rounded-[32px] flex items-center justify-center shadow-xl shadow-emerald-200 rotate-3">
+                    <Trophy size={64} />
+                </div>
+            </div>
+            <h2 className="text-3xl font-bold text-slate-800 mb-2">Excellent !</h2>
+            <p className="text-slate-500 mb-10 text-lg">Tu maîtrises ce point à la perfection.</p>
+            <button 
+                onClick={onNext} 
+                className="w-full max-w-xs py-4 bg-slate-900 text-white rounded-2xl font-bold shadow-xl shadow-slate-300 hover:shadow-2xl hover:scale-105 transition-all flex items-center justify-center gap-2"
+            >
+                {isLastStep ? 'Terminer le Chapitre' : 'Continuer'} <ArrowRight size={20} />
+            </button>
+        </motion.div>
     );
 };
 
@@ -318,42 +210,30 @@ const LearningEngine: React.FC<LearningEngineProps> = ({
     onCompleteChapter, 
     onExit 
 }) => {
-    // We removed the 'steps' local state. 
-    // We now rely on 'chapter.steps' directly from props.
-    
-    // Internal cursor state for navigation
+    // Local UI State only. No data logic.
     const [currentStepIndex, setCurrentStepIndex] = useState(0);
     const [stepSuccess, setStepSuccess] = useState(false);
     const [showFeedback, setShowFeedback] = useState(false);
 
-    /**
-     * SYNC EFFECT (The Split Brain Fix)
-     * When the parent updates the chapter (e.g. unlocks the next step),
-     * we detect this and move the cursor if needed.
-     */
+    // Sync Cursor with Parent State
     useEffect(() => {
-        // Find the index of the first 'current' step (active step)
         const activeIndex = chapter.steps.findIndex(s => s.status === 'current');
         
         if (activeIndex !== -1) {
              setCurrentStepIndex(activeIndex);
         } else {
-             // Fallback: If no step is 'current', check for last completed
+             // Fallback logic
              const lastCompleted = chapter.steps.map(s => s.status).lastIndexOf('completed');
              if (lastCompleted !== -1 && lastCompleted < chapter.steps.length - 1) {
-                 // Move to the next one if available
                  setCurrentStepIndex(lastCompleted + 1);
              } else if (lastCompleted === chapter.steps.length - 1) {
-                 // All done
                  setCurrentStepIndex(lastCompleted);
              } else {
                  setCurrentStepIndex(0);
              }
         }
-        
-        // Reset success state when chapter changes deeply
         setStepSuccess(false);
-    }, [chapter]);
+    }, [chapter]); // Re-run when parent passes new chapter object
 
     if (isLoading) {
         return <LessonSkeleton />;
@@ -361,11 +241,9 @@ const LearningEngine: React.FC<LearningEngineProps> = ({
 
     const currentStep = chapter.steps[currentStepIndex];
 
-    /**
-     * NAVIGATION LOGIC
-     */
     const goToNextStep = () => {
         if (currentStepIndex < chapter.steps.length - 1) {
+            // Optimistic update for UI smoothness, but real logic is in useEffect
             setCurrentStepIndex(prev => prev + 1);
             setStepSuccess(false);
         } else {
@@ -373,32 +251,19 @@ const LearningEngine: React.FC<LearningEngineProps> = ({
         }
     };
 
-    /**
-     * VALIDATION HANDLER
-     */
     const handleStepValidation = (success: boolean) => {
         if (success) {
-            // 1. Show Local Success View
             setStepSuccess(true);
-            
-            // 2. Notify Parent (SOURCE OF TRUTH)
-            // This triggers the global state update in App.tsx
-            // App.tsx will then re-render this component with the updated 'chapter' prop
-            // where the current step is 'completed' and the next is 'current'.
+            // Notify Parent -> Updates State -> Triggers Effect -> Moves Slide
             onStepComplete(currentStep.id);
         }
     };
 
-    /**
-     * RENDER HELPER
-     */
     const renderCurrentStep = () => {
-        // 1. Success Screen (Visual feedback before moving on)
         if (stepSuccess && currentStep.type !== 'theory') {
             return <SuccessView onNext={goToNextStep} isLastStep={currentStepIndex === chapter.steps.length - 1} />;
         }
 
-        // 2. Step Content by Type
         switch (currentStep.type) {
             case 'theory':
                 return (
@@ -447,9 +312,8 @@ const LearningEngine: React.FC<LearningEngineProps> = ({
                     <ChevronLeft size={24} />
                 </button>
                 
-                {/* Progress Indicators */}
                 <div className="flex items-center gap-2 bg-white/50 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/50 shadow-sm">
-                    {chapter.steps.map((step) => {
+                    {chapter.steps.map((step, idx) => {
                         let color = "bg-slate-200"; 
                         if (step.status === 'completed') color = "bg-emerald-400";
                         else if (step.status === 'current') color = "bg-indigo-500 scale-125";
@@ -469,7 +333,7 @@ const LearningEngine: React.FC<LearningEngineProps> = ({
                 </button>
             </div>
 
-            {/* Content Card Area */}
+            {/* Content Card */}
             <div className="flex-1 px-4 pb-4 overflow-hidden relative">
                 <motion.div 
                     initial={{ y: 20, opacity: 0 }}
@@ -479,8 +343,6 @@ const LearningEngine: React.FC<LearningEngineProps> = ({
                     {renderCurrentStep()}
                 </motion.div>
             </div>
-
-            <FeedbackDrawer isOpen={showFeedback} onClose={() => setShowFeedback(false)} />
         </div>
     );
 };
