@@ -1,82 +1,165 @@
 
 import React, { useState, useEffect } from 'react';
 import { 
-  DndContext, closestCenter, KeyboardSensor, PointerSensor, 
-  useSensor, useSensors, DragEndEvent 
-} from '@dnd-kit/core';
-import {
-  arrayMove, SortableContext, sortableKeyboardCoordinates, 
-  verticalListSortingStrategy, useSortable
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
-import { 
-    CheckCircle2, RotateCcw, GripVertical, ArrowRight,
-    Trophy, XCircle, Lock, Circle, ChevronLeft, MessageSquare, Star, Send
+    CheckCircle2, ArrowRight, Trophy, XCircle, 
+    ChevronLeft, MessageSquare, Star, Send, MoveDown, MousePointerClick 
 } from 'lucide-react';
 import { Chapter, LessonStep, ParsonsItem, QuizContent, Comment } from '../types';
 import TheoryPlayer from './TheoryPlayer';
 import { LessonSkeleton } from './Loaders';
 import { motion, AnimatePresence } from 'framer-motion';
 
-// --- MOCK COMMENTS ---
+// --- CONSTANTS & MOCKS ---
 const MOCK_COMMENTS: Comment[] = [
     { id: '1', author: 'Sarah K.', avatar: 'https://i.pravatar.cc/150?u=1', text: 'Merci pour cette explication claire !', date: 'Il y a 2j', rating: 5 },
     { id: '2', author: 'David O.', avatar: 'https://i.pravatar.cc/150?u=2', text: 'Je n\'ai pas bien compris la partie sur les vecteurs.', date: 'Il y a 1j', rating: 3 },
 ];
 
-// --- SUB-COMPONENTS ---
+// ============================================================================
+// SUB-COMPONENTS
+// ============================================================================
 
-const SortableItem: React.FC<{ id: string, content: string }> = ({ id, content }) => {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
-  const style = { transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 10 : 1 };
-  return (
-    <div ref={setNodeRef} style={style} {...attributes} className={`bg-white p-5 rounded-2xl border border-slate-100 shadow-sm mb-3 flex items-start gap-4 touch-none transition-all ${isDragging ? 'shadow-xl ring-2 ring-indigo-500 opacity-90 scale-105' : 'hover:border-indigo-100'}`}>
-        <div {...listeners} className="mt-1 text-slate-300 hover:text-indigo-500 cursor-grab active:cursor-grabbing transition-colors"><GripVertical size={20} /></div>
-        <p className="text-base font-medium text-slate-700 font-sans select-none leading-relaxed">{content}</p>
-    </div>
-  );
+/**
+ * SUCCESS VIEW
+ * Displayed when a non-theory step is validated successfully.
+ */
+const SuccessView: React.FC<{ onNext: () => void, isLastStep: boolean }> = ({ onNext, isLastStep }) => {
+    return (
+        <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }} 
+            animate={{ opacity: 1, scale: 1 }} 
+            className="h-full flex flex-col items-center justify-center p-6 text-center"
+        >
+            <div className="relative mb-8">
+                <div className="absolute inset-0 bg-emerald-200 rounded-full blur-2xl opacity-40 animate-pulse"></div>
+                <div className="w-32 h-32 bg-gradient-to-tr from-emerald-400 to-teal-500 text-white rounded-[32px] flex items-center justify-center shadow-xl shadow-emerald-200 rotate-3">
+                    <Trophy size={64} />
+                </div>
+            </div>
+            <h2 className="text-3xl font-bold text-slate-800 mb-2">Excellent !</h2>
+            <p className="text-slate-500 mb-10 text-lg">Tu maîtrises ce point à la perfection.</p>
+            <button 
+                onClick={onNext} 
+                className="w-full max-w-xs py-4 bg-slate-900 text-white rounded-2xl font-bold shadow-xl shadow-slate-300 hover:shadow-2xl hover:scale-105 transition-all flex items-center justify-center gap-2"
+            >
+                {isLastStep ? 'Terminer le Chapitre' : 'Continuer'} <ArrowRight size={20} />
+            </button>
+        </motion.div>
+    );
 };
 
-const ParsonsPlayer: React.FC<{ items: ParsonsItem[], onValidate: (success: boolean) => void }> = ({ items: initialItems, onValidate }) => {
-  const [items, setItems] = useState<ParsonsItem[]>([...initialItems].sort(() => Math.random() - 0.5));
-  const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
-  
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (active.id !== over?.id) {
-      setItems((items) => {
-        const oldIndex = items.findIndex((item) => item.id === active.id);
-        const newIndex = items.findIndex((item) => item.id === over?.id);
-        return arrayMove(items, oldIndex, newIndex);
-      });
-    }
-  };
+/**
+ * SEQUENCE BUILDER (LUDIC PARSONS)
+ * A tap-to-order game replacing standard drag-and-drop.
+ */
+const SequenceBuilder: React.FC<{ items: ParsonsItem[], onValidate: (success: boolean) => void }> = ({ items: initialItems, onValidate }) => {
+    const [pool, setPool] = useState<ParsonsItem[]>([]);
+    const [answer, setAnswer] = useState<ParsonsItem[]>([]);
+    const [isError, setIsError] = useState(false);
 
-  const checkOrder = () => {
-    const currentIds = items.map(i => i.id).join(',');
-    const correctIds = initialItems.map(i => i.id).join(',');
-    onValidate(currentIds === correctIds);
-  };
+    useEffect(() => {
+        setPool([...initialItems].sort(() => Math.random() - 0.5));
+        setAnswer([]);
+    }, [initialItems]);
 
-  return (
-    <div className="flex flex-col h-full">
-      <div className="bg-indigo-50/50 border border-indigo-100 rounded-2xl p-4 mb-6">
-          <p className="text-sm text-indigo-900 font-medium text-center">🔁 Rangez les éléments dans l'ordre logique.</p>
-      </div>
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext items={items} strategy={verticalListSortingStrategy}>
-          <div className="flex-1 overflow-y-auto min-h-[200px] px-1 pb-4">
-            {items.map((item) => <SortableItem key={item.id} id={item.id} content={item.content} />)}
-          </div>
-        </SortableContext>
-      </DndContext>
-      <button onClick={checkOrder} className="w-full py-4 mt-4 rounded-2xl bg-gradient-to-r from-indigo-600 to-indigo-700 text-white font-bold shadow-lg shadow-indigo-200 active:scale-95 transition-all flex items-center justify-center gap-2 hover:shadow-indigo-300">
-          <CheckCircle2 size={20} /> Vérifier ma réponse
-      </button>
-    </div>
-  );
+    const handleAddToAnswer = (item: ParsonsItem) => {
+        setIsError(false);
+        setPool(prev => prev.filter(i => i.id !== item.id));
+        setAnswer(prev => [...prev, item]);
+    };
+
+    const handleRemoveFromAnswer = (item: ParsonsItem) => {
+        setIsError(false);
+        setAnswer(prev => prev.filter(i => i.id !== item.id));
+        setPool(prev => [...prev, item]);
+    };
+
+    const checkOrder = () => {
+        const currentIds = answer.map(i => i.id).join(',');
+        const correctIds = initialItems.map(i => i.id).join(',');
+        
+        if (currentIds === correctIds) {
+            onValidate(true);
+        } else {
+            setIsError(true);
+            setTimeout(() => setIsError(false), 800);
+        }
+    };
+
+    return (
+        <div className="flex flex-col h-full">
+            <div className="bg-indigo-50/50 border border-indigo-100 rounded-2xl p-4 mb-4">
+                <p className="text-sm text-indigo-900 font-medium text-center flex items-center justify-center gap-2">
+                    <MousePointerClick size={16} /> 
+                    Tape les blocs dans l'ordre logique.
+                </p>
+            </div>
+
+            {/* Answer Zone */}
+            <div className={`flex-1 bg-slate-50 rounded-3xl p-4 border-2 transition-colors duration-300 relative ${isError ? 'border-red-300 bg-red-50' : 'border-dashed border-slate-200'}`}>
+                {answer.length === 0 && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-300 pointer-events-none">
+                        <MoveDown size={24} className="mb-2 animate-bounce" />
+                        <span className="text-sm font-bold">Ton résultat ici</span>
+                    </div>
+                )}
+                <div className="space-y-2">
+                    <AnimatePresence>
+                        {answer.map((item, index) => (
+                            <motion.button
+                                layout
+                                initial={{ opacity: 0, scale: 0.8 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.8 }}
+                                key={item.id}
+                                onClick={() => handleRemoveFromAnswer(item)}
+                                className="w-full text-left p-4 bg-white rounded-xl shadow-sm border-l-4 border-indigo-500 font-medium text-slate-700 text-sm active:scale-95 transition-transform flex items-center gap-3"
+                            >
+                                <span className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-bold flex-shrink-0">{index + 1}</span>
+                                {item.content}
+                            </motion.button>
+                        ))}
+                    </AnimatePresence>
+                </div>
+            </div>
+
+            {/* Pool Zone */}
+            <div className="mt-4 min-h-[140px]">
+                <p className="text-xs font-bold text-slate-400 uppercase mb-2 ml-1">Blocs disponibles</p>
+                <div className="flex flex-wrap gap-2">
+                    <AnimatePresence>
+                        {pool.map((item) => (
+                            <motion.button
+                                layout
+                                initial={{ opacity: 0, scale: 0.8 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.5 }}
+                                key={item.id}
+                                onClick={() => handleAddToAnswer(item)}
+                                className="bg-white border border-slate-200 px-4 py-2.5 rounded-xl text-sm font-medium text-slate-600 shadow-sm active:bg-slate-50 active:scale-95 transition-all"
+                            >
+                                {item.content}
+                            </motion.button>
+                        ))}
+                    </AnimatePresence>
+                </div>
+            </div>
+
+            <button 
+                onClick={checkOrder} 
+                disabled={pool.length > 0}
+                className="w-full py-4 mt-4 rounded-2xl bg-gradient-to-r from-indigo-600 to-indigo-700 text-white font-bold shadow-lg shadow-indigo-200 active:scale-95 transition-all flex items-center justify-center gap-2 hover:shadow-indigo-300 disabled:opacity-50 disabled:shadow-none"
+            >
+                <CheckCircle2 size={20} /> Valider
+            </button>
+        </div>
+    );
 };
 
+/**
+ * QUIZ PLAYER
+ * Standard Multiple Choice Question.
+ */
 const QuizPlayer: React.FC<{ quiz: QuizContent, onValidate: (success: boolean) => void }> = ({ quiz, onValidate }) => {
     const [selectedOption, setSelectedOption] = useState<string | null>(null);
     const [submitted, setSubmitted] = useState(false);
@@ -117,8 +200,10 @@ const QuizPlayer: React.FC<{ quiz: QuizContent, onValidate: (success: boolean) =
     );
 };
 
-// --- FEEDBACK DRAWER ---
-
+/**
+ * FEEDBACK DRAWER
+ * Overlay for comments and feedback.
+ */
 const FeedbackDrawer: React.FC<{ isOpen: boolean, onClose: () => void }> = ({ isOpen, onClose }) => {
     const [rating, setRating] = useState(0);
     const [comment, setComment] = useState('');
@@ -129,7 +214,7 @@ const FeedbackDrawer: React.FC<{ isOpen: boolean, onClose: () => void }> = ({ is
         const newComment: Comment = {
             id: Date.now().toString(),
             author: 'Moi',
-            avatar: 'https://picsum.photos/id/64/200/200', // Mock Current User
+            avatar: 'https://picsum.photos/id/64/200/200', 
             text: comment,
             date: 'À l\'instant',
             rating: rating || 5
@@ -153,7 +238,6 @@ const FeedbackDrawer: React.FC<{ isOpen: boolean, onClose: () => void }> = ({ is
                         transition={{ type: "spring", bounce: 0, duration: 0.4 }}
                         className="absolute bottom-0 left-0 right-0 bg-white rounded-t-[32px] z-50 h-[80%] flex flex-col shadow-2xl"
                     >
-                        {/* Header */}
                         <div className="p-4 border-b border-slate-100 flex items-center justify-between">
                             <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
                                 <MessageSquare className="text-indigo-500" size={20} />
@@ -161,9 +245,7 @@ const FeedbackDrawer: React.FC<{ isOpen: boolean, onClose: () => void }> = ({ is
                             </h3>
                             <button onClick={onClose} className="p-2 bg-slate-100 rounded-full text-slate-500"><XCircle size={20} /></button>
                         </div>
-
                         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                            {/* Input Zone */}
                             <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
                                 <div className="flex justify-center gap-2 mb-4">
                                     {[1, 2, 3, 4, 5].map((star) => (
@@ -175,7 +257,7 @@ const FeedbackDrawer: React.FC<{ isOpen: boolean, onClose: () => void }> = ({ is
                                 <div className="flex gap-2">
                                     <input 
                                         type="text" 
-                                        placeholder="Poser une question ou laisser un avis..." 
+                                        placeholder="Poser une question..." 
                                         value={comment}
                                         onChange={(e) => setComment(e.target.value)}
                                         className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
@@ -190,8 +272,6 @@ const FeedbackDrawer: React.FC<{ isOpen: boolean, onClose: () => void }> = ({ is
                                     </button>
                                 </div>
                             </div>
-
-                            {/* Comments List */}
                             <div className="space-y-4">
                                 {comments.map((c) => (
                                     <motion.div key={c.id} layout initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex gap-4">
@@ -219,12 +299,14 @@ const FeedbackDrawer: React.FC<{ isOpen: boolean, onClose: () => void }> = ({ is
     );
 };
 
-// --- MAIN ENGINE ---
+// ============================================================================
+// MAIN ENGINE COMPONENT
+// ============================================================================
 
 interface LearningEngineProps {
     chapter: Chapter;
     isLoading?: boolean; 
-    onStepComplete: (stepId: string) => void; // Added Prop
+    onStepComplete: (stepId: string) => void;
     onCompleteChapter: () => void;
     onExit: () => void;
 }
@@ -236,17 +318,36 @@ const LearningEngine: React.FC<LearningEngineProps> = ({
     onCompleteChapter, 
     onExit 
 }) => {
+    // Local State
     const [steps, setSteps] = useState<LessonStep[]>(chapter.steps);
     const [currentStepIndex, setCurrentStepIndex] = useState(0);
     const [stepSuccess, setStepSuccess] = useState(false);
     const [showFeedback, setShowFeedback] = useState(false);
 
-    // Sync local state when chapter prop updates (from parent state lift)
+    /**
+     * SYNC EFFECT
+     * Ensures local state matches prop updates from parent (e.g. step unlocking).
+     * This prevents the "Split Brain" issue.
+     */
     useEffect(() => {
-        const firstActive = chapter.steps.findIndex(s => s.status === 'current' || s.status === 'locked');
-        if (firstActive !== -1) setCurrentStepIndex(firstActive);
-        else setCurrentStepIndex(chapter.steps.length - 1);
         setSteps(chapter.steps);
+        
+        // Determine active step index based on status
+        const activeIndex = chapter.steps.findIndex(s => s.status === 'current');
+        if (activeIndex !== -1) {
+             setCurrentStepIndex(activeIndex);
+        } else {
+             // Fallback logic: find last completed or start at 0
+             const lastCompleted = chapter.steps.map(s => s.status).lastIndexOf('completed');
+             if (lastCompleted !== -1 && lastCompleted < chapter.steps.length - 1) {
+                 setCurrentStepIndex(lastCompleted + 1);
+             } else if (lastCompleted === chapter.steps.length - 1) {
+                 setCurrentStepIndex(lastCompleted); // All done
+             } else {
+                 setCurrentStepIndex(0);
+             }
+        }
+        
         setStepSuccess(false);
     }, [chapter]);
 
@@ -256,25 +357,9 @@ const LearningEngine: React.FC<LearningEngineProps> = ({
 
     const currentStep = steps[currentStepIndex];
 
-    const handleStepValidation = (success: boolean) => {
-        if (success) {
-            setStepSuccess(true);
-            
-            // NOTIFY PARENT IMMEDIATELY
-            onStepComplete(currentStep.id);
-
-            // Optimistic local update for UI fluidity
-            const newSteps = [...steps];
-            newSteps[currentStepIndex] = { ...newSteps[currentStepIndex], status: 'completed' };
-            if (currentStepIndex < newSteps.length - 1) {
-                if (newSteps[currentStepIndex + 1].status === 'locked') {
-                    newSteps[currentStepIndex + 1] = { ...newSteps[currentStepIndex + 1], status: 'current' };
-                }
-            }
-            setSteps(newSteps);
-        }
-    };
-
+    /**
+     * NAVIGATION LOGIC
+     */
     const goToNextStep = () => {
         if (currentStepIndex < steps.length - 1) {
             setCurrentStepIndex(prev => prev + 1);
@@ -284,25 +369,39 @@ const LearningEngine: React.FC<LearningEngineProps> = ({
         }
     };
 
-    const renderStepContent = () => {
+    /**
+     * VALIDATION HANDLER
+     */
+    const handleStepValidation = (success: boolean) => {
+        if (success) {
+            setStepSuccess(true);
+            
+            // 1. Notify Parent (Source of Truth)
+            onStepComplete(currentStep.id);
+
+            // 2. Optimistic Update (Immediate UI feedback)
+            const newSteps = [...steps];
+            newSteps[currentStepIndex] = { ...newSteps[currentStepIndex], status: 'completed' };
+            
+            // Unlock next locally for visual transition
+            if (currentStepIndex < newSteps.length - 1) {
+                newSteps[currentStepIndex + 1] = { ...newSteps[currentStepIndex + 1], status: 'current' };
+            }
+            setSteps(newSteps);
+        }
+    };
+
+    /**
+     * RENDER HELPER
+     * Dispatcher to render the correct view based on step type.
+     */
+    const renderCurrentStep = () => {
+        // 1. Success Screen (except for Theory which flows differently)
         if (stepSuccess && currentStep.type !== 'theory') {
-             return (
-                <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="h-full flex flex-col items-center justify-center p-6 text-center">
-                    <div className="relative mb-8">
-                        <div className="absolute inset-0 bg-emerald-200 rounded-full blur-2xl opacity-40 animate-pulse"></div>
-                        <div className="w-32 h-32 bg-gradient-to-tr from-emerald-400 to-teal-500 text-white rounded-[32px] flex items-center justify-center shadow-xl shadow-emerald-200 rotate-3">
-                            <Trophy size={64} />
-                        </div>
-                    </div>
-                    <h2 className="text-3xl font-bold text-slate-800 mb-2">Excellent !</h2>
-                    <p className="text-slate-500 mb-10 text-lg">Tu maîtrises ce point à la perfection.</p>
-                    <button onClick={goToNextStep} className="w-full max-w-xs py-4 bg-slate-900 text-white rounded-2xl font-bold shadow-xl shadow-slate-300 hover:shadow-2xl hover:scale-105 transition-all flex items-center justify-center gap-2">
-                        {currentStepIndex === steps.length - 1 ? 'Terminer le Chapitre' : 'Continuer'} <ArrowRight size={20} />
-                    </button>
-                </motion.div>
-             );
+            return <SuccessView onNext={goToNextStep} isLastStep={currentStepIndex === steps.length - 1} />;
         }
 
+        // 2. Step Content by Type
         switch (currentStep.type) {
             case 'theory':
                 return (
@@ -323,6 +422,7 @@ const LearningEngine: React.FC<LearningEngineProps> = ({
                         )}
                     </div>
                 );
+            
             case 'checkpoint':
             case 'exercise':
                 return (
@@ -330,25 +430,30 @@ const LearningEngine: React.FC<LearningEngineProps> = ({
                          {currentStep.quiz ? (
                              <QuizPlayer quiz={currentStep.quiz} onValidate={handleStepValidation} />
                          ) : currentStep.parsons ? (
-                             <ParsonsPlayer items={currentStep.parsons} onValidate={handleStepValidation} />
-                         ) : <div>Error</div>}
+                             <SequenceBuilder items={currentStep.parsons} onValidate={handleStepValidation} />
+                         ) : (
+                             <div className="text-center text-slate-400 mt-10">Contenu manquant</div>
+                         )}
                     </div>
                 );
-            default: return null;
+            
+            default: 
+                return null;
         }
     };
 
+    // --- MAIN RENDER ---
     return (
         <div className="h-full flex flex-col bg-[#F8FAFC] relative">
-            {/* Minimalist Glass Top Bar */}
+            {/* Top Bar */}
             <div className="px-6 py-4 flex items-center justify-between sticky top-0 z-40">
                 <button onClick={onExit} className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-slate-400 hover:text-slate-700 shadow-sm border border-slate-100 transition-colors">
                     <ChevronLeft size={24} />
                 </button>
                 
-                {/* Step Indicators */}
+                {/* Progress Indicators */}
                 <div className="flex items-center gap-2 bg-white/50 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/50 shadow-sm">
-                    {steps.map((step, idx) => {
+                    {steps.map((step) => {
                         let color = "bg-slate-200"; 
                         if (step.status === 'completed') color = "bg-emerald-400";
                         else if (step.status === 'current') color = "bg-indigo-500 scale-125";
@@ -363,24 +468,22 @@ const LearningEngine: React.FC<LearningEngineProps> = ({
                     })}
                 </div>
 
-                {/* Feedback Button */}
                 <button onClick={() => setShowFeedback(true)} className="w-10 h-10 bg-white text-indigo-500 rounded-full flex items-center justify-center shadow-sm border border-slate-100 hover:bg-indigo-50 transition-colors">
                      <MessageSquare size={20} />
                 </button>
             </div>
 
-            {/* Main Content Card */}
+            {/* Content Card Area */}
             <div className="flex-1 px-4 pb-4 overflow-hidden relative">
                 <motion.div 
                     initial={{ y: 20, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
                     className="bg-white w-full h-full rounded-[40px] shadow-2xl shadow-indigo-500/5 overflow-hidden border border-white/50 relative"
                 >
-                    {renderStepContent()}
+                    {renderCurrentStep()}
                 </motion.div>
             </div>
 
-            {/* Feedback Sheet */}
             <FeedbackDrawer isOpen={showFeedback} onClose={() => setShowFeedback(false)} />
         </div>
     );

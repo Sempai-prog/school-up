@@ -33,19 +33,17 @@ const App: React.FC = () => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [user, setUser] = useState<User>(MOCK_USER); 
   
-  // State for Curriculum Progress - Initialized for FREE ROAM (Unlock All)
+  // State for Curriculum Progress
   const [curriculum, setCurriculum] = useState(() => {
     // Deep copy the initial modules
     const freeRoamData = JSON.parse(JSON.stringify(INITIAL_MODULES));
     
-    // Iterate through the entire structure to unlock everything
+    // Iterate through the entire structure to unlock everything (Free Roam Mode)
     Object.keys(freeRoamData).forEach((grade) => {
       Object.keys(freeRoamData[grade]).forEach((subject) => {
         freeRoamData[grade][subject].forEach((mod: any) => {
           mod.units.forEach((unit: any) => {
             unit.chapters.forEach((chap: any) => {
-              // In Free Roam, ensure nothing is locked. 
-              // 'current' status implies accessible/clickable in our UI.
               if (chap.status === 'locked') {
                 chap.status = 'current';
               }
@@ -66,10 +64,9 @@ const App: React.FC = () => {
 
   // Initial Load Effect
   useEffect(() => {
-    // Simulate initial asset loading
     const timer = setTimeout(() => {
         setIsAppLoading(false);
-    }, 2500); // 2.5s splash screen
+    }, 2500); 
     return () => clearTimeout(timer);
   }, []);
 
@@ -84,7 +81,6 @@ const App: React.FC = () => {
     setCurrentView('dashboard');
   };
 
-  // Synchronize Tab clicks with View state
   const handleTabChange = (tab: Tab) => {
     setActiveTab(tab);
     if (tab === Tab.DASHBOARD) setCurrentView('dashboard');
@@ -103,12 +99,9 @@ const App: React.FC = () => {
 
   const handleOpenSubject = (subjectId: string) => {
     setSelectedSubjectId(subjectId);
-    
-    // Simulate loading delay for better UX
     setIsContentLoading(true);
     setCurrentView('subject_map');
     setActiveTab(Tab.LEARNING);
-    
     setTimeout(() => {
         setIsContentLoading(false);
     }, 800);
@@ -116,7 +109,6 @@ const App: React.FC = () => {
 
   const handleStartLesson = (chapter: Chapter) => {
     setSelectedChapter(chapter);
-    // Simulate loading delay
     setIsContentLoading(true);
     setCurrentView('lesson');
     setTimeout(() => {
@@ -124,43 +116,46 @@ const App: React.FC = () => {
     }, 800);
   };
 
-  // --- PROGRESSION LOGIC ---
+  // --- CORE ARCHITECTURE: PROGRESSION LOGIC ---
 
-  // 1. Handle granular step completion
+  /**
+   * 1. Handles granular step completion.
+   * - Marks current step as completed.
+   * - Unlocks the next step if it is locked.
+   */
   const handleStepComplete = (chapterId: string, stepId: string) => {
     if (!selectedSubjectId) return;
 
     setCurriculum(prev => {
         const newCurriculum = JSON.parse(JSON.stringify(prev));
         
-        // Safety check
+        // Safety check for path existence
         if (!newCurriculum[gradeLevel]?.[selectedSubjectId]) {
             return prev;
         }
 
         const currentGradeModules = newCurriculum[gradeLevel][selectedSubjectId];
 
-        // Traverse to find the chapter and step
+        // Traverse curriculum to find the target chapter
         for (const mod of currentGradeModules) {
             for (const unit of mod.units) {
-                for (const chapter of unit.chapters) {
-                    if (chapter.id === chapterId) {
-                        // Find the specific step
-                        const stepIndex = chapter.steps.findIndex((s: any) => s.id === stepId);
+                const chapter = unit.chapters.find((c: any) => c.id === chapterId);
+                
+                if (chapter) {
+                    const stepIndex = chapter.steps.findIndex((s: any) => s.id === stepId);
+                    
+                    if (stepIndex !== -1) {
+                        // A. Mark current step as completed
+                        chapter.steps[stepIndex].status = 'completed';
                         
-                        if (stepIndex !== -1) {
-                            // Mark step completed
-                            chapter.steps[stepIndex].status = 'completed';
-                            
-                            // Unlock next step (sequential logic within chapter)
-                            if (stepIndex < chapter.steps.length - 1) {
-                                if (chapter.steps[stepIndex + 1].status === 'locked') {
-                                    chapter.steps[stepIndex + 1].status = 'current';
-                                }
+                        // B. Unlock next step (Sequential Unlocking)
+                        if (stepIndex < chapter.steps.length - 1) {
+                            if (chapter.steps[stepIndex + 1].status === 'locked') {
+                                chapter.steps[stepIndex + 1].status = 'current';
                             }
                         }
-                        return newCurriculum; // Exit early once found and updated
                     }
+                    return newCurriculum; // Stop once found and updated
                 }
             }
         }
@@ -168,106 +163,60 @@ const App: React.FC = () => {
     });
   };
 
-  // 2. Handle final chapter completion (Award XP and close)
+  /**
+   * 2. Handles Chapter Completion.
+   * - Validates that ALL steps are completed.
+   * - Updates chapter status to 'completed'.
+   * - Awards XP.
+   * - Navigates back to map.
+   */
   const handleChapterComplete = (chapterId: string) => {
     if (!selectedSubjectId) return;
 
-    // We must find the chapter in the LIVE curriculum state to check progress accurately
-    // selectedChapter state might be stale
+    // We must find the chapter in the LIVE curriculum state to verify completion
     const modules = curriculum[gradeLevel]?.[selectedSubjectId];
     if (!modules) return;
 
     let liveChapter: Chapter | null = null;
     
-    // Find the chapter in the current state
+    // Lookup Chapter
     for (const mod of modules) {
         for (const unit of mod.units) {
-            for (const c of unit.chapters) {
-                if (c.id === chapterId) {
-                    liveChapter = c;
-                    break;
-                }
-            }
-            if (liveChapter) break;
+            const c = unit.chapters.find((ch: any) => ch.id === chapterId);
+            if (c) { liveChapter = c; break; }
         }
         if (liveChapter) break;
     }
 
-    if (liveChapter) {
-        // Calculate XP based on steps
-        const completedSteps = liveChapter.steps.filter(s => s.status === 'completed').length;
-        const totalSteps = liveChapter.steps.length;
-        const maxXp = liveChapter.xpReward || 100;
-        
-        // Award XP if significantly complete or if it's the first full completion
-        // For simplicity: Award remaining XP proportional to progress, or just award if finished.
-        // We'll award full XP if all steps are done.
-        if (completedSteps === totalSteps) {
-             // Only award if not already completed to avoid infinite farming (optional rule)
-             // But for Free Roam fun, let's allow re-earning or just check status
-             if (liveChapter.status !== 'completed') {
-                 updateXp(user.xp + maxXp);
-             }
-        } else {
-             // Partial XP logic
-             const xpEarned = Math.floor((completedSteps / totalSteps) * maxXp);
-             if (liveChapter.status !== 'completed') {
-                updateXp(user.xp + xpEarned);
-             }
-        }
-    }
+    if (!liveChapter) return;
 
-    // Update Curriculum State (Mark chapter fully completed if all steps are done)
-    setCurriculum(prev => {
-        const newCurriculum = JSON.parse(JSON.stringify(prev));
-        const currentGradeModules = newCurriculum[gradeLevel][selectedSubjectId];
+    // Strict Validation: Are ALL steps completed?
+    const allStepsCompleted = liveChapter.steps.every((s: any) => s.status === 'completed');
 
-        for (const mod of currentGradeModules) {
-            for (const unit of mod.units) {
-                for (const chapter of unit.chapters) {
-                    if (chapter.id === chapterId) {
-                        const allStepsCompleted = chapter.steps.every((s: any) => s.status === 'completed');
-                        if (allStepsCompleted) {
-                            chapter.status = 'completed';
-                        }
+    if (allStepsCompleted) {
+        // A. Award XP
+        const xpReward = liveChapter.xpReward || 100;
+        updateXp(user.xp + xpReward);
+
+        // B. Update Curriculum Status
+        setCurriculum(prev => {
+            const newCurriculum = JSON.parse(JSON.stringify(prev));
+            const currentGradeModules = newCurriculum[gradeLevel][selectedSubjectId];
+
+            for (const mod of currentGradeModules) {
+                for (const unit of mod.units) {
+                    const chapter = unit.chapters.find((c: any) => c.id === chapterId);
+                    if (chapter) {
+                        chapter.status = 'completed';
                     }
                 }
             }
-        }
-        return newCurriculum;
-    });
+            return newCurriculum;
+        });
+    }
 
-    // Navigate back
+    // C. Navigation
     setCurrentView('subject_map');
-  };
-
-  // --- NAVIGATION HANDLERS ---
-  const handleNavigateToAgenda = () => {
-      setCurrentView('agenda');
-      setActiveTab(Tab.AGENDA);
-  };
-
-  const handleNavigateToLeaderboard = () => {
-      setSocialDefaultTab('leaderboard');
-      setCurrentView('social');
-      setActiveTab(Tab.SOCIAL);
-  };
-
-  const handleNavigateToLibrary = () => {
-      setCurrentView('library');
-  };
-
-  const handleNavigateToNotifications = () => {
-      setCurrentView('notifications');
-  };
-
-  const handleNavigateToStore = () => {
-      setCurrentView('store');
-  };
-  
-  const handleNavigateToSettings = () => {
-      setIsProfileOpen(false); 
-      setCurrentView('settings');
   };
 
   // --- LOGIC ---
@@ -278,6 +227,13 @@ const App: React.FC = () => {
   const handlePremiumUpgrade = () => {
     setUser(prev => ({ ...prev, isPremium: true }));
   };
+
+  // --- NAVIGATION HANDLERS ---
+  const handleNavigateToAgenda = () => { setCurrentView('agenda'); setActiveTab(Tab.AGENDA); };
+  const handleNavigateToLeaderboard = () => { setSocialDefaultTab('leaderboard'); setCurrentView('social'); setActiveTab(Tab.SOCIAL); };
+  const handleNavigateToLibrary = () => { setCurrentView('library'); };
+  const handleNavigateToNotifications = () => { setCurrentView('notifications'); };
+  const handleNavigateToStore = () => { setCurrentView('store'); };
 
   const renderContent = () => {
     switch (currentView) {
@@ -301,58 +257,30 @@ const App: React.FC = () => {
           />
         );
 
-      case 'agenda':
-        return <AgendaScreen />;
-      
-      case 'library':
-        return <LibraryScreen onBack={() => {
-            setCurrentView('dashboard');
-            setActiveTab(Tab.DASHBOARD);
-        }} />;
-
-      case 'notifications':
-        return <NotificationScreen onBack={() => setCurrentView('dashboard')} />;
-
-      case 'store':
-        return <StoreScreen 
-            userXp={user.xp} 
-            onUpdateXp={updateXp} 
-            onUpgrade={handlePremiumUpgrade}
-            onBack={() => setCurrentView('dashboard')} 
-        />;
-
-      case 'settings':
-        return <SettingsScreen 
-            user={user} 
-            onLogout={handleLogout} 
-            onBack={() => setCurrentView('dashboard')} 
-        />;
+      case 'agenda': return <AgendaScreen />;
+      case 'library': return <LibraryScreen onBack={() => { setCurrentView('dashboard'); setActiveTab(Tab.DASHBOARD); }} />;
+      case 'notifications': return <NotificationScreen onBack={() => setCurrentView('dashboard')} />;
+      case 'store': return <StoreScreen userXp={user.xp} onUpdateXp={updateXp} onUpgrade={handlePremiumUpgrade} onBack={() => setCurrentView('dashboard')} />;
+      case 'settings': return <SettingsScreen user={user} onLogout={handleLogout} onBack={() => setCurrentView('dashboard')} />;
 
       case 'subject_map':
         const subject = CURRICULUM_SUBJECTS[gradeLevel].find(s => s.id === selectedSubjectId);
         const modules = selectedSubjectId ? curriculum[gradeLevel]?.[selectedSubjectId] : [];
-        
         if (!subject || !modules) return <div>Sujet introuvable</div>;
-
         return (
             <SubjectMap 
                 subject={subject}
                 modules={modules}
-                isLoading={isContentLoading} // Pass loading state
+                isLoading={isContentLoading}
                 onStartLesson={handleStartLesson}
-                onBack={() => {
-                    setCurrentView('dashboard');
-                    setActiveTab(Tab.DASHBOARD);
-                }}
+                onBack={() => { setCurrentView('dashboard'); setActiveTab(Tab.DASHBOARD); }}
             />
         );
 
       case 'lesson':
-        if (!selectedChapter) {
-            return <div>Erreur: Chapitre non sélectionné</div>;
-        }
+        if (!selectedChapter) return <div>Erreur</div>;
         
-        // Find the LIVE chapter from curriculum to ensure props are fresh
+        // Find the LIVE chapter to ensure we pass the correct locked/unlocked state
         let liveChapter = selectedChapter;
         if (selectedSubjectId) {
              const mods = curriculum[gradeLevel]?.[selectedSubjectId];
@@ -373,48 +301,22 @@ const App: React.FC = () => {
                 isLoading={isContentLoading} 
                 onStepComplete={(stepId) => handleStepComplete(liveChapter.id, stepId)}
                 onCompleteChapter={() => handleChapterComplete(liveChapter.id)}
-                onExit={() => {
-                    setCurrentView('subject_map');
-                }}
+                onExit={() => setCurrentView('subject_map')}
             />
         );
 
-      case 'sis':
-        return <SisScreen />;
+      case 'sis': return <SisScreen />;
+      case 'social': return <SocialScreen defaultTab={socialDefaultTab} />;
 
-      case 'social':
-        return <SocialScreen defaultTab={socialDefaultTab} />;
-
-      default:
-        return <DashboardScreen 
-            user={user}
-            onOpenProfile={() => setIsProfileOpen(true)} 
-            onOpenSubject={handleOpenSubject}
-            currentGrade={gradeLevel}
-            onGradeChange={setGradeLevel}
-            onNavigateToAgenda={handleNavigateToAgenda}
-            onNavigateToLeaderboard={handleNavigateToLeaderboard}
-            onNavigateToLibrary={handleNavigateToLibrary}
-            onNavigateToNotifications={handleNavigateToNotifications}
-            onNavigateToStore={handleNavigateToStore}
-        />;
+      default: return <DashboardScreen user={user} onOpenProfile={() => setIsProfileOpen(true)} onOpenSubject={handleOpenSubject} currentGrade={gradeLevel} onGradeChange={setGradeLevel} />;
     }
   };
 
-  // --- RENDER APP ---
-
-  if (isAppLoading) {
-      return <AppSplash />;
-  }
-
-  if (!isAuthenticated) {
-    return <AuthScreen onLogin={handleLogin} />;
-  }
+  if (isAppLoading) return <AppSplash />;
+  if (!isAuthenticated) return <AuthScreen onLogin={handleLogin} />;
 
   return (
     <div className="flex flex-col h-full bg-[#F8FAFC] max-w-md mx-auto shadow-2xl overflow-hidden relative border-x border-slate-200">
-      
-      {/* Background Ambience */}
       <div className="fixed top-0 left-0 w-full h-full pointer-events-none z-0 overflow-hidden max-w-md mx-auto">
          <div className="absolute top-[-10%] right-[-10%] w-96 h-96 bg-indigo-200/20 rounded-full blur-[80px]" />
          <div className="absolute bottom-[20%] left-[-20%] w-80 h-80 bg-blue-200/20 rounded-full blur-[80px]" />
@@ -435,19 +337,12 @@ const App: React.FC = () => {
         </AnimatePresence>
       </main>
 
-      {/* Only show BottomNav if we are not in a deep drill-down view */}
-      {currentView !== 'lesson' && currentView !== 'library' && currentView !== 'store' && currentView !== 'settings' && currentView !== 'notifications' && (
+      {['dashboard', 'sis', 'social', 'agenda'].includes(currentView) && (
         <BottomNav activeTab={activeTab} onTabChange={handleTabChange} />
       )}
 
       <AnimatePresence>
-          {isProfileOpen && (
-              <ProfileModal 
-                user={{...user, grade: gradeLevel}} // Use live user state
-                onClose={() => setIsProfileOpen(false)} 
-                onLogout={handleLogout}
-              />
-          )}
+          {isProfileOpen && <ProfileModal user={{...user, grade: gradeLevel}} onClose={() => setIsProfileOpen(false)} onLogout={handleLogout} />}
       </AnimatePresence>
     </div>
   );
