@@ -33,33 +33,21 @@ const App: React.FC = () => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [user, setUser] = useState<User>(MOCK_USER); 
   
-  // State for Curriculum Progress
+  // --- CORE STATE: SOURCE OF TRUTH ---
+  // We deep copy the initial constant so we can mutate status (locked -> current -> completed)
   const [curriculum, setCurriculum] = useState(() => {
-    // Deep copy the initial modules
-    const freeRoamData = JSON.parse(JSON.stringify(INITIAL_MODULES));
-    
-    // Iterate through the entire structure to unlock everything (Free Roam Mode)
-    Object.keys(freeRoamData).forEach((grade) => {
-      Object.keys(freeRoamData[grade]).forEach((subject) => {
-        freeRoamData[grade][subject].forEach((mod: any) => {
-          mod.units.forEach((unit: any) => {
-            unit.chapters.forEach((chap: any) => {
-              if (chap.status === 'locked') {
-                chap.status = 'current';
-              }
-            });
-          });
-        });
-      });
-    });
-    
-    return freeRoamData;
+    try {
+        return JSON.parse(JSON.stringify(INITIAL_MODULES));
+    } catch (e) {
+        console.error("Failed to initialize curriculum", e);
+        return INITIAL_MODULES;
+    }
   });
 
   // Navigation State
   const [currentView, setCurrentView] = useState<ViewState>('dashboard');
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
-  const [selectedChapter, setSelectedChapter] = useState<Chapter | null>(null);
+  const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null); // Store ID, not object
   const [socialDefaultTab, setSocialDefaultTab] = useState<'social' | 'leaderboard'>('social');
 
   // Initial Load Effect
@@ -108,7 +96,7 @@ const App: React.FC = () => {
   };
 
   const handleStartLesson = (chapter: Chapter) => {
-    setSelectedChapter(chapter);
+    setSelectedChapterId(chapter.id);
     setIsContentLoading(true);
     setCurrentView('lesson');
     setTimeout(() => {
@@ -116,28 +104,26 @@ const App: React.FC = () => {
     }, 800);
   };
 
-  // --- CORE ARCHITECTURE: PROGRESSION LOGIC ---
+  // --- PROGRESSION ENGINE (THE BRAIN) ---
 
   /**
-   * 1. Handles granular step completion.
-   * - Marks current step as completed.
-   * - Unlocks the next step if it is locked.
+   * Updates the step status to 'completed' and unlocks the next step.
+   * This runs in the global state to ensure data persistence.
    */
   const handleStepComplete = (chapterId: string, stepId: string) => {
     if (!selectedSubjectId) return;
 
-    setCurriculum(prev => {
+    setCurriculum((prev: any) => {
+        // Deep copy to ensure immutability
         const newCurriculum = JSON.parse(JSON.stringify(prev));
         
-        // Safety check for path existence
-        if (!newCurriculum[gradeLevel]?.[selectedSubjectId]) {
-            return prev;
-        }
+        // Fail-safe
+        if (!newCurriculum[gradeLevel]?.[selectedSubjectId]) return prev;
 
-        const currentGradeModules = newCurriculum[gradeLevel][selectedSubjectId];
+        const modules = newCurriculum[gradeLevel][selectedSubjectId];
 
-        // Traverse curriculum to find the target chapter
-        for (const mod of currentGradeModules) {
+        // Traverse to find the chapter
+        for (const mod of modules) {
             for (const unit of mod.units) {
                 const chapter = unit.chapters.find((c: any) => c.id === chapterId);
                 
@@ -145,17 +131,17 @@ const App: React.FC = () => {
                     const stepIndex = chapter.steps.findIndex((s: any) => s.id === stepId);
                     
                     if (stepIndex !== -1) {
-                        // A. Mark current step as completed
+                        // 1. Mark current step as completed
                         chapter.steps[stepIndex].status = 'completed';
                         
-                        // B. Unlock next step (Sequential Unlocking)
+                        // 2. Unlock next step if exists
                         if (stepIndex < chapter.steps.length - 1) {
                             if (chapter.steps[stepIndex + 1].status === 'locked') {
                                 chapter.steps[stepIndex + 1].status = 'current';
                             }
                         }
                     }
-                    return newCurriculum; // Stop once found and updated
+                    return newCurriculum; // Return updated state
                 }
             }
         }
@@ -164,22 +150,18 @@ const App: React.FC = () => {
   };
 
   /**
-   * 2. Handles Chapter Completion.
-   * - Validates that ALL steps are completed.
-   * - Updates chapter status to 'completed'.
-   * - Awards XP.
-   * - Navigates back to map.
+   * Finalizes chapter completion, awards XP, and updates global status.
    */
   const handleChapterComplete = (chapterId: string) => {
     if (!selectedSubjectId) return;
 
-    // We must find the chapter in the LIVE curriculum state to verify completion
+    // We need to look up the LIVE state
     const modules = curriculum[gradeLevel]?.[selectedSubjectId];
     if (!modules) return;
 
     let liveChapter: Chapter | null = null;
     
-    // Lookup Chapter
+    // Find Chapter in State to check logic
     for (const mod of modules) {
         for (const unit of mod.units) {
             const c = unit.chapters.find((ch: any) => ch.id === chapterId);
@@ -190,16 +172,18 @@ const App: React.FC = () => {
 
     if (!liveChapter) return;
 
-    // Strict Validation: Are ALL steps completed?
-    const allStepsCompleted = liveChapter.steps.every((s: any) => s.status === 'completed');
+    // Check strict completion: All steps must be completed
+    const allStepsDone = liveChapter.steps.every((s: any) => s.status === 'completed');
 
-    if (allStepsCompleted) {
-        // A. Award XP
-        const xpReward = liveChapter.xpReward || 100;
-        updateXp(user.xp + xpReward);
+    if (allStepsDone) {
+        // 1. Award XP (Only if not already completed to avoid farming)
+        if (liveChapter.status !== 'completed') {
+            const xpReward = liveChapter.xpReward || 100;
+            updateXp(user.xp + xpReward);
+        }
 
-        // B. Update Curriculum Status
-        setCurriculum(prev => {
+        // 2. Mark Chapter Completed in State
+        setCurriculum((prev: any) => {
             const newCurriculum = JSON.parse(JSON.stringify(prev));
             const currentGradeModules = newCurriculum[gradeLevel][selectedSubjectId];
 
@@ -208,6 +192,9 @@ const App: React.FC = () => {
                     const chapter = unit.chapters.find((c: any) => c.id === chapterId);
                     if (chapter) {
                         chapter.status = 'completed';
+                        
+                        // Optional: Logic to unlock the NEXT chapter could go here
+                        // e.g. find current chapter index, unlock index + 1
                     }
                 }
             }
@@ -215,11 +202,11 @@ const App: React.FC = () => {
         });
     }
 
-    // C. Navigation
+    // 3. Return to Map
     setCurrentView('subject_map');
   };
 
-  // --- LOGIC ---
+  // --- UTILS ---
   const updateXp = (newXp: number) => {
       setUser(prev => ({ ...prev, xp: newXp }));
   };
@@ -265,6 +252,7 @@ const App: React.FC = () => {
 
       case 'subject_map':
         const subject = CURRICULUM_SUBJECTS[gradeLevel].find(s => s.id === selectedSubjectId);
+        // CRITICAL: Pass the LIVE curriculum state, not static constants
         const modules = selectedSubjectId ? curriculum[gradeLevel]?.[selectedSubjectId] : [];
         if (!subject || !modules) return <div>Sujet introuvable</div>;
         return (
@@ -278,29 +266,32 @@ const App: React.FC = () => {
         );
 
       case 'lesson':
-        if (!selectedChapter) return <div>Erreur</div>;
+        if (!selectedChapterId) return <div>Erreur</div>;
         
-        // Find the LIVE chapter to ensure we pass the correct locked/unlocked state
-        let liveChapter = selectedChapter;
+        // CRITICAL: We must find the LIVE chapter object from the state
+        // We cannot rely on a stale object.
+        let liveChapter: Chapter | null = null;
         if (selectedSubjectId) {
              const mods = curriculum[gradeLevel]?.[selectedSubjectId];
              if (mods) {
                  for (const m of mods) {
                      for (const u of m.units) {
-                         const c = u.chapters.find((ch: any) => ch.id === selectedChapter.id);
+                         const c = u.chapters.find((ch: any) => ch.id === selectedChapterId);
                          if (c) { liveChapter = c; break; }
                      }
-                     if (liveChapter !== selectedChapter) break;
+                     if (liveChapter) break;
                  }
              }
         }
+
+        if (!liveChapter) return <div>Chapitre introuvable</div>;
 
         return (
             <LearningScreen 
                 chapter={liveChapter}
                 isLoading={isContentLoading} 
-                onStepComplete={(stepId) => handleStepComplete(liveChapter.id, stepId)}
-                onCompleteChapter={() => handleChapterComplete(liveChapter.id)}
+                onStepComplete={(stepId) => handleStepComplete(liveChapter!.id, stepId)}
+                onCompleteChapter={() => handleChapterComplete(liveChapter!.id)}
                 onExit={() => setCurrentView('subject_map')}
             />
         );

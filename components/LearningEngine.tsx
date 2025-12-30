@@ -318,36 +318,40 @@ const LearningEngine: React.FC<LearningEngineProps> = ({
     onCompleteChapter, 
     onExit 
 }) => {
-    // Local State
-    const [steps, setSteps] = useState<LessonStep[]>(chapter.steps);
+    // We removed the 'steps' local state. 
+    // We now rely on 'chapter.steps' directly from props.
+    
+    // Internal cursor state for navigation
     const [currentStepIndex, setCurrentStepIndex] = useState(0);
     const [stepSuccess, setStepSuccess] = useState(false);
     const [showFeedback, setShowFeedback] = useState(false);
 
     /**
-     * SYNC EFFECT
-     * Ensures local state matches prop updates from parent (e.g. step unlocking).
-     * This prevents the "Split Brain" issue.
+     * SYNC EFFECT (The Split Brain Fix)
+     * When the parent updates the chapter (e.g. unlocks the next step),
+     * we detect this and move the cursor if needed.
      */
     useEffect(() => {
-        setSteps(chapter.steps);
-        
-        // Determine active step index based on status
+        // Find the index of the first 'current' step (active step)
         const activeIndex = chapter.steps.findIndex(s => s.status === 'current');
+        
         if (activeIndex !== -1) {
              setCurrentStepIndex(activeIndex);
         } else {
-             // Fallback logic: find last completed or start at 0
+             // Fallback: If no step is 'current', check for last completed
              const lastCompleted = chapter.steps.map(s => s.status).lastIndexOf('completed');
              if (lastCompleted !== -1 && lastCompleted < chapter.steps.length - 1) {
+                 // Move to the next one if available
                  setCurrentStepIndex(lastCompleted + 1);
              } else if (lastCompleted === chapter.steps.length - 1) {
-                 setCurrentStepIndex(lastCompleted); // All done
+                 // All done
+                 setCurrentStepIndex(lastCompleted);
              } else {
                  setCurrentStepIndex(0);
              }
         }
         
+        // Reset success state when chapter changes deeply
         setStepSuccess(false);
     }, [chapter]);
 
@@ -355,13 +359,13 @@ const LearningEngine: React.FC<LearningEngineProps> = ({
         return <LessonSkeleton />;
     }
 
-    const currentStep = steps[currentStepIndex];
+    const currentStep = chapter.steps[currentStepIndex];
 
     /**
      * NAVIGATION LOGIC
      */
     const goToNextStep = () => {
-        if (currentStepIndex < steps.length - 1) {
+        if (currentStepIndex < chapter.steps.length - 1) {
             setCurrentStepIndex(prev => prev + 1);
             setStepSuccess(false);
         } else {
@@ -374,31 +378,24 @@ const LearningEngine: React.FC<LearningEngineProps> = ({
      */
     const handleStepValidation = (success: boolean) => {
         if (success) {
+            // 1. Show Local Success View
             setStepSuccess(true);
             
-            // 1. Notify Parent (Source of Truth)
+            // 2. Notify Parent (SOURCE OF TRUTH)
+            // This triggers the global state update in App.tsx
+            // App.tsx will then re-render this component with the updated 'chapter' prop
+            // where the current step is 'completed' and the next is 'current'.
             onStepComplete(currentStep.id);
-
-            // 2. Optimistic Update (Immediate UI feedback)
-            const newSteps = [...steps];
-            newSteps[currentStepIndex] = { ...newSteps[currentStepIndex], status: 'completed' };
-            
-            // Unlock next locally for visual transition
-            if (currentStepIndex < newSteps.length - 1) {
-                newSteps[currentStepIndex + 1] = { ...newSteps[currentStepIndex + 1], status: 'current' };
-            }
-            setSteps(newSteps);
         }
     };
 
     /**
      * RENDER HELPER
-     * Dispatcher to render the correct view based on step type.
      */
     const renderCurrentStep = () => {
-        // 1. Success Screen (except for Theory which flows differently)
+        // 1. Success Screen (Visual feedback before moving on)
         if (stepSuccess && currentStep.type !== 'theory') {
-            return <SuccessView onNext={goToNextStep} isLastStep={currentStepIndex === steps.length - 1} />;
+            return <SuccessView onNext={goToNextStep} isLastStep={currentStepIndex === chapter.steps.length - 1} />;
         }
 
         // 2. Step Content by Type
@@ -442,7 +439,6 @@ const LearningEngine: React.FC<LearningEngineProps> = ({
         }
     };
 
-    // --- MAIN RENDER ---
     return (
         <div className="h-full flex flex-col bg-[#F8FAFC] relative">
             {/* Top Bar */}
@@ -453,7 +449,7 @@ const LearningEngine: React.FC<LearningEngineProps> = ({
                 
                 {/* Progress Indicators */}
                 <div className="flex items-center gap-2 bg-white/50 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/50 shadow-sm">
-                    {steps.map((step) => {
+                    {chapter.steps.map((step) => {
                         let color = "bg-slate-200"; 
                         if (step.status === 'completed') color = "bg-emerald-400";
                         else if (step.status === 'current') color = "bg-indigo-500 scale-125";
