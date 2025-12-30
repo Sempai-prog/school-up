@@ -223,22 +223,31 @@ const FeedbackDrawer: React.FC<{ isOpen: boolean, onClose: () => void }> = ({ is
 
 interface LearningEngineProps {
     chapter: Chapter;
-    isLoading?: boolean; // New prop
+    isLoading?: boolean; 
+    onStepComplete: (stepId: string) => void; // Added Prop
     onCompleteChapter: () => void;
     onExit: () => void;
 }
 
-const LearningEngine: React.FC<LearningEngineProps> = ({ chapter, isLoading, onCompleteChapter, onExit }) => {
+const LearningEngine: React.FC<LearningEngineProps> = ({ 
+    chapter, 
+    isLoading, 
+    onStepComplete,
+    onCompleteChapter, 
+    onExit 
+}) => {
     const [steps, setSteps] = useState<LessonStep[]>(chapter.steps);
     const [currentStepIndex, setCurrentStepIndex] = useState(0);
     const [stepSuccess, setStepSuccess] = useState(false);
     const [showFeedback, setShowFeedback] = useState(false);
 
+    // Sync local state when chapter prop updates (from parent state lift)
     useEffect(() => {
         const firstActive = chapter.steps.findIndex(s => s.status === 'current' || s.status === 'locked');
         if (firstActive !== -1) setCurrentStepIndex(firstActive);
         else setCurrentStepIndex(chapter.steps.length - 1);
         setSteps(chapter.steps);
+        setStepSuccess(false);
     }, [chapter]);
 
     if (isLoading) {
@@ -250,6 +259,11 @@ const LearningEngine: React.FC<LearningEngineProps> = ({ chapter, isLoading, onC
     const handleStepValidation = (success: boolean) => {
         if (success) {
             setStepSuccess(true);
+            
+            // NOTIFY PARENT IMMEDIATELY
+            onStepComplete(currentStep.id);
+
+            // Optimistic local update for UI fluidity
             const newSteps = [...steps];
             newSteps[currentStepIndex] = { ...newSteps[currentStepIndex], status: 'completed' };
             if (currentStepIndex < newSteps.length - 1) {

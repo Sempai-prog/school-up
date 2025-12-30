@@ -124,42 +124,120 @@ const App: React.FC = () => {
     }, 800);
   };
 
-  // --- FREE ROAM PROGRESSION LOGIC ---
-  const handleChapterComplete = (chapterId: string) => {
+  // --- PROGRESSION LOGIC ---
+
+  // 1. Handle granular step completion
+  const handleStepComplete = (chapterId: string, stepId: string) => {
     if (!selectedSubjectId) return;
 
-    // 1. Award XP (using selectedChapter state for simplicity as it matches the id)
-    if (selectedChapter && selectedChapter.id === chapterId) {
-       const reward = selectedChapter.xpReward || 50;
-       updateXp(user.xp + reward);
-    }
-
-    // 2. Update Curriculum State (Mark completed only, NO UNLOCKING needed)
     setCurriculum(prev => {
         const newCurriculum = JSON.parse(JSON.stringify(prev));
         
         // Safety check
-        if (!newCurriculum[gradeLevel] || !newCurriculum[gradeLevel][selectedSubjectId]) {
+        if (!newCurriculum[gradeLevel]?.[selectedSubjectId]) {
             return prev;
         }
 
         const currentGradeModules = newCurriculum[gradeLevel][selectedSubjectId];
 
-        // Find and update the specific chapter
+        // Traverse to find the chapter and step
         for (const mod of currentGradeModules) {
             for (const unit of mod.units) {
                 for (const chapter of unit.chapters) {
                     if (chapter.id === chapterId) {
-                        chapter.status = 'completed';
+                        // Find the specific step
+                        const stepIndex = chapter.steps.findIndex((s: any) => s.id === stepId);
+                        
+                        if (stepIndex !== -1) {
+                            // Mark step completed
+                            chapter.steps[stepIndex].status = 'completed';
+                            
+                            // Unlock next step (sequential logic within chapter)
+                            if (stepIndex < chapter.steps.length - 1) {
+                                if (chapter.steps[stepIndex + 1].status === 'locked') {
+                                    chapter.steps[stepIndex + 1].status = 'current';
+                                }
+                            }
+                        }
+                        return newCurriculum; // Exit early once found and updated
                     }
                 }
             }
         }
+        return newCurriculum;
+    });
+  };
 
+  // 2. Handle final chapter completion (Award XP and close)
+  const handleChapterComplete = (chapterId: string) => {
+    if (!selectedSubjectId) return;
+
+    // We must find the chapter in the LIVE curriculum state to check progress accurately
+    // selectedChapter state might be stale
+    const modules = curriculum[gradeLevel]?.[selectedSubjectId];
+    if (!modules) return;
+
+    let liveChapter: Chapter | null = null;
+    
+    // Find the chapter in the current state
+    for (const mod of modules) {
+        for (const unit of mod.units) {
+            for (const c of unit.chapters) {
+                if (c.id === chapterId) {
+                    liveChapter = c;
+                    break;
+                }
+            }
+            if (liveChapter) break;
+        }
+        if (liveChapter) break;
+    }
+
+    if (liveChapter) {
+        // Calculate XP based on steps
+        const completedSteps = liveChapter.steps.filter(s => s.status === 'completed').length;
+        const totalSteps = liveChapter.steps.length;
+        const maxXp = liveChapter.xpReward || 100;
+        
+        // Award XP if significantly complete or if it's the first full completion
+        // For simplicity: Award remaining XP proportional to progress, or just award if finished.
+        // We'll award full XP if all steps are done.
+        if (completedSteps === totalSteps) {
+             // Only award if not already completed to avoid infinite farming (optional rule)
+             // But for Free Roam fun, let's allow re-earning or just check status
+             if (liveChapter.status !== 'completed') {
+                 updateXp(user.xp + maxXp);
+             }
+        } else {
+             // Partial XP logic
+             const xpEarned = Math.floor((completedSteps / totalSteps) * maxXp);
+             if (liveChapter.status !== 'completed') {
+                updateXp(user.xp + xpEarned);
+             }
+        }
+    }
+
+    // Update Curriculum State (Mark chapter fully completed if all steps are done)
+    setCurriculum(prev => {
+        const newCurriculum = JSON.parse(JSON.stringify(prev));
+        const currentGradeModules = newCurriculum[gradeLevel][selectedSubjectId];
+
+        for (const mod of currentGradeModules) {
+            for (const unit of mod.units) {
+                for (const chapter of unit.chapters) {
+                    if (chapter.id === chapterId) {
+                        const allStepsCompleted = chapter.steps.every((s: any) => s.status === 'completed');
+                        if (allStepsCompleted) {
+                            chapter.status = 'completed';
+                        }
+                    }
+                }
+            }
+        }
         return newCurriculum;
     });
 
-    // 3. Navigate back
+    // Navigate back
     setCurrentView('subject_map');
   };
 
@@ -273,11 +351,28 @@ const App: React.FC = () => {
         if (!selectedChapter) {
             return <div>Erreur: Chapitre non sélectionné</div>;
         }
+        
+        // Find the LIVE chapter from curriculum to ensure props are fresh
+        let liveChapter = selectedChapter;
+        if (selectedSubjectId) {
+             const mods = curriculum[gradeLevel]?.[selectedSubjectId];
+             if (mods) {
+                 for (const m of mods) {
+                     for (const u of m.units) {
+                         const c = u.chapters.find((ch: any) => ch.id === selectedChapter.id);
+                         if (c) { liveChapter = c; break; }
+                     }
+                     if (liveChapter !== selectedChapter) break;
+                 }
+             }
+        }
+
         return (
             <LearningScreen 
-                chapter={selectedChapter}
-                isLoading={isContentLoading} // Pass loading state
-                onCompleteChapter={() => handleChapterComplete(selectedChapter.id)}
+                chapter={liveChapter}
+                isLoading={isContentLoading} 
+                onStepComplete={(stepId) => handleStepComplete(liveChapter.id, stepId)}
+                onCompleteChapter={() => handleChapterComplete(liveChapter.id)}
                 onExit={() => {
                     setCurrentView('subject_map');
                 }}
