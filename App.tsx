@@ -1,11 +1,12 @@
 
 import React, { useState, useEffect } from 'react';
-import { Tab, GradeLevel, Chapter, User } from './types';
+import { Tab, GradeLevel, Chapter, User, CurriculumState } from './types';
 import { MOCK_USER } from './constants';
 import { CURRICULUM_SUBJECTS, CURRICULUM_MODULES as INITIAL_MODULES } from './data/curriculum';
 import DashboardScreen from './components/DashboardScreen';
 import LearningScreen from './components/LearningEngine';
 import SubjectMap from './components/SubjectMap';
+import SubjectPortal from './components/SubjectPortal';
 import SisScreen from './components/SisScreen';
 import SocialScreen from './components/SocialScreen';
 import AgendaScreen from './components/AgendaScreen'; 
@@ -19,50 +20,53 @@ import AuthScreen from './components/AuthScreen';
 import { AppSplash } from './components/Loaders';
 import { AnimatePresence, motion } from 'framer-motion';
 
-// Define View State Types
-type ViewState = 'dashboard' | 'subject_map' | 'lesson' | 'sis' | 'social' | 'agenda' | 'library' | 'store' | 'notifications' | 'settings';
+// Define View State Types - Added 'subject_portal'
+type ViewState = 'dashboard' | 'subject_portal' | 'subject_map' | 'lesson' | 'sis' | 'social' | 'agenda' | 'library' | 'store' | 'notifications' | 'settings';
 
 const App: React.FC = () => {
   // --- LOADING STATES ---
   const [isAppLoading, setIsAppLoading] = useState(true);
   const [isContentLoading, setIsContentLoading] = useState(false);
 
+  // --- USER SESSION STATE ---
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [gradeLevel, setGradeLevel] = useState<GradeLevel>('3eme'); // Default to 3eme for demo content
+  const [gradeLevel, setGradeLevel] = useState<GradeLevel>('tle'); // Default to Terminale for demo 
   const [activeTab, setActiveTab] = useState<Tab>(Tab.DASHBOARD);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [user, setUser] = useState<User>(MOCK_USER); 
-  
-  // --- CORE STATE: SOURCE OF TRUTH (WITH PERSISTENCE) ---
-  const [curriculum, setCurriculum] = useState(() => {
+
+  // --- NAVIGATION STATE ---
+  const [currentView, setCurrentView] = useState<ViewState>('dashboard');
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
+  const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null); 
+  const [socialDefaultTab, setSocialDefaultTab] = useState<'social' | 'leaderboard'>('social');
+
+  // --- CORE CURRICULUM STATE (THE BRAIN) ---
+  const [curriculum, setCurriculum] = useState<CurriculumState>(() => {
     try {
-        const saved = localStorage.getItem('skoolup_curriculum_v2');
-        return saved ? JSON.parse(saved) : JSON.parse(JSON.stringify(INITIAL_MODULES));
+        const saved = localStorage.getItem('skoolup_curriculum_v4'); // Incremented version
+        if (saved) {
+            return JSON.parse(saved);
+        }
+        return JSON.parse(JSON.stringify(INITIAL_MODULES)); 
     } catch (e) {
         console.error("Failed to load curriculum", e);
-        return INITIAL_MODULES;
+        return JSON.parse(JSON.stringify(INITIAL_MODULES));
     }
   });
 
-  // Persist State Changes
+  // --- PERSISTENCE EFFECT ---
   useEffect(() => {
-    localStorage.setItem('skoolup_curriculum_v2', JSON.stringify(curriculum));
+    localStorage.setItem('skoolup_curriculum_v4', JSON.stringify(curriculum));
   }, [curriculum]);
 
-  // Navigation State
-  const [currentView, setCurrentView] = useState<ViewState>('dashboard');
-  const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
-  const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null); // Store ID, not object
-  const [socialDefaultTab, setSocialDefaultTab] = useState<'social' | 'leaderboard'>('social');
-
-  // Initial Load Effect
+  // Initial Splash Timer
   useEffect(() => {
-    const timer = setTimeout(() => {
-        setIsAppLoading(false);
-    }, 2500); 
+    const timer = setTimeout(() => setIsAppLoading(false), 2000); 
     return () => clearTimeout(timer);
   }, []);
 
+  // --- AUTH HANDLERS ---
   const handleLogin = (role: string) => {
     setUser(prev => ({ ...prev, role: role as 'student' | 'teacher' }));
     setIsAuthenticated(true);
@@ -74,6 +78,7 @@ const App: React.FC = () => {
     setCurrentView('dashboard');
   };
 
+  // --- NAVIGATION HANDLERS ---
   const handleTabChange = (tab: Tab) => {
     setActiveTab(tab);
     if (tab === Tab.DASHBOARD) setCurrentView('dashboard');
@@ -83,125 +88,102 @@ const App: React.FC = () => {
         setSocialDefaultTab('social'); 
     }
     if (tab === Tab.AGENDA) setCurrentView('agenda');
+    if (tab === Tab.STORE) setCurrentView('store');
+    if (tab === Tab.NOTIFICATIONS) setCurrentView('notifications');
     if (tab === Tab.LEARNING) {
-      if (currentView !== 'subject_map' && currentView !== 'lesson') {
+      if (currentView !== 'subject_map' && currentView !== 'lesson' && currentView !== 'subject_portal') {
           setCurrentView('dashboard'); 
       }
     }
   };
 
+  // 1. Dashboard -> Portal
   const handleOpenSubject = (subjectId: string) => {
     setSelectedSubjectId(subjectId);
     setIsContentLoading(true);
-    setCurrentView('subject_map');
+    setCurrentView('subject_portal'); // Now goes to Portal first
     setActiveTab(Tab.LEARNING);
-    setTimeout(() => {
-        setIsContentLoading(false);
-    }, 800);
+    setTimeout(() => setIsContentLoading(false), 400);
   };
 
+  // 2. Portal -> Map
+  const handleEnterMap = () => {
+      setIsContentLoading(true);
+      setCurrentView('subject_map');
+      setTimeout(() => setIsContentLoading(false), 400);
+  };
+
+  // 3. Map -> Lesson
   const handleStartLesson = (chapter: Chapter) => {
     setSelectedChapterId(chapter.id);
     setIsContentLoading(true);
     setCurrentView('lesson');
-    setTimeout(() => {
-        setIsContentLoading(false);
-    }, 800);
+    setTimeout(() => setIsContentLoading(false), 600);
   };
 
-  // --- PROGRESSION ENGINE (THE BRAIN) ---
-
-  const handleStepComplete = (chapterId: string, stepId: string) => {
+  // --- THE BRAIN: PROGRESSION LOGIC ---
+  const handleStepSuccess = (chapterId: string, stepId: string) => {
     if (!selectedSubjectId) return;
 
-    setCurriculum((prev: any) => {
-        // Deep clone for immutability
-        const newCurriculum = JSON.parse(JSON.stringify(prev));
-        const modules = newCurriculum[gradeLevel]?.[selectedSubjectId];
-        
-        if (!modules) return prev;
+    setCurriculum((prev) => {
+        const nextState = JSON.parse(JSON.stringify(prev));
+        const subjectModules = nextState[gradeLevel]?.[selectedSubjectId];
 
-        // Traverse to find chapter
-        for (const mod of modules) {
-            for (const unit of mod.units) {
-                const chapter = unit.chapters.find((c: any) => c.id === chapterId);
-                if (chapter) {
-                    const stepIndex = chapter.steps.findIndex((s: any) => s.id === stepId);
-                    if (stepIndex !== -1) {
-                        // 1. Complete Current
-                        chapter.steps[stepIndex].status = 'completed';
-                        
-                        // 2. Unlock Next Step
-                        if (stepIndex < chapter.steps.length - 1) {
-                            chapter.steps[stepIndex + 1].status = 'current';
-                        }
+        if (!subjectModules) return prev;
+
+        let targetChapter: any = null;
+        let allChaptersFlat: any[] = [];
+
+        subjectModules.forEach((mod: any) => {
+            mod.units.forEach((unit: any) => {
+                unit.chapters.forEach((chap: any) => {
+                    allChaptersFlat.push(chap);
+                    if (chap.id === chapterId) {
+                        targetChapter = chap;
                     }
-                    return newCurriculum;
+                });
+            });
+        });
+
+        if (!targetChapter) return prev;
+
+        const stepIndex = targetChapter.steps.findIndex((s: any) => s.id === stepId);
+        if (stepIndex === -1) return prev;
+
+        targetChapter.steps[stepIndex].status = 'completed';
+
+        if (stepIndex < targetChapter.steps.length - 1) {
+            targetChapter.steps[stepIndex + 1].status = 'current';
+        } else {
+            if (targetChapter.status !== 'completed') {
+                targetChapter.status = 'completed';
+            }
+
+            const currentChapIndex = allChaptersFlat.findIndex((c: any) => c.id === chapterId);
+            if (currentChapIndex !== -1 && currentChapIndex < allChaptersFlat.length - 1) {
+                const nextChapter = allChaptersFlat[currentChapIndex + 1];
+                if (nextChapter.status === 'locked') {
+                    nextChapter.status = 'current';
+                    if (nextChapter.steps.length > 0) {
+                        nextChapter.steps[0].status = 'current';
+                    }
                 }
             }
         }
-        return prev;
-    });
-  };
 
-  const handleChapterComplete = (chapterId: string) => {
-    if (!selectedSubjectId) return;
-
-    // 1. Award XP Logic
-    // We do this check against the previous state to avoid double rewarding on re-renders
-    let xpAwarded = 0;
-    
-    setCurriculum((prev: any) => {
-        const newCurriculum = JSON.parse(JSON.stringify(prev));
-        const modules = newCurriculum[gradeLevel]?.[selectedSubjectId];
-        if (!modules) return prev;
-
-        // Flatten chapters for easy navigation
-        let allChapters: any[] = [];
-        modules.forEach((m: any) => m.units.forEach((u: any) => allChapters.push(...u.chapters)));
-
-        const currentIndex = allChapters.findIndex((c: any) => c.id === chapterId);
-        
-        if (currentIndex !== -1) {
-            const currentChapter = allChapters[currentIndex];
-            
-            // Check if actually new completion
-            if (currentChapter.status !== 'completed') {
-                currentChapter.status = 'completed';
-                xpAwarded = currentChapter.xpReward || 100;
-
-                // UNLOCK NEXT CHAPTER
-                if (currentIndex < allChapters.length - 1) {
-                    allChapters[currentIndex + 1].status = 'current';
-                }
-            }
-        }
-        return newCurriculum;
+        return nextState;
     });
 
-    if (xpAwarded > 0) {
-        updateXp(user.xp + xpAwarded);
-    }
-
-    setCurrentView('subject_map');
+    setUser(prev => ({ ...prev, xp: prev.xp + 50 }));
   };
 
-  const updateXp = (newXp: number) => {
-      setUser(prev => ({ ...prev, xp: newXp }));
-  };
 
-  const handlePremiumUpgrade = () => {
-    setUser(prev => ({ ...prev, isPremium: true }));
-  };
-
-  // --- NAVIGATION HANDLERS ---
-  const handleNavigateToAgenda = () => { setCurrentView('agenda'); setActiveTab(Tab.AGENDA); };
-  const handleNavigateToLeaderboard = () => { setSocialDefaultTab('leaderboard'); setCurrentView('social'); setActiveTab(Tab.SOCIAL); };
-  const handleNavigateToLibrary = () => { setCurrentView('library'); };
-  const handleNavigateToNotifications = () => { setCurrentView('notifications'); };
-  const handleNavigateToStore = () => { setCurrentView('store'); };
-
+  // --- VIEW RENDERER ---
   const renderContent = () => {
+    // Shared Subject Data Fetching
+    const subject = selectedSubjectId ? CURRICULUM_SUBJECTS[gradeLevel].find(s => s.id === selectedSubjectId) : null;
+    const modules = selectedSubjectId ? curriculum[gradeLevel]?.[selectedSubjectId] : [];
+
     switch (currentView) {
       case 'dashboard':
         return (
@@ -213,52 +195,49 @@ const App: React.FC = () => {
                 const defaultSub = CURRICULUM_SUBJECTS[gradeLevel][0]?.id;
                 if(defaultSub) handleOpenSubject(defaultSub);
             }}
-            onNavigateToAgenda={handleNavigateToAgenda}
-            onNavigateToLeaderboard={handleNavigateToLeaderboard}
-            onNavigateToLibrary={handleNavigateToLibrary}
-            onNavigateToNotifications={handleNavigateToNotifications}
-            onNavigateToStore={handleNavigateToStore}
+            onNavigateToAgenda={() => { setCurrentView('agenda'); setActiveTab(Tab.AGENDA); }}
+            onNavigateToLeaderboard={() => { setSocialDefaultTab('leaderboard'); setCurrentView('social'); setActiveTab(Tab.SOCIAL); }}
+            onNavigateToLibrary={() => setCurrentView('library')}
+            onNavigateToNotifications={() => { setCurrentView('notifications'); setActiveTab(Tab.NOTIFICATIONS); }}
+            onNavigateToStore={() => { setCurrentView('store'); setActiveTab(Tab.STORE); }}
             currentGrade={gradeLevel}
-            onGradeChange={setGradeLevel}
+            onGradeChange={(g) => { setGradeLevel(g); /* Reset navigation if needed */ }}
           />
         );
 
-      case 'agenda': return <AgendaScreen />;
-      case 'library': return <LibraryScreen onBack={() => { setCurrentView('dashboard'); setActiveTab(Tab.DASHBOARD); }} />;
-      case 'notifications': return <NotificationScreen onBack={() => setCurrentView('dashboard')} />;
-      case 'store': return <StoreScreen userXp={user.xp} onUpdateXp={updateXp} onUpgrade={handlePremiumUpgrade} onBack={() => setCurrentView('dashboard')} />;
-      case 'settings': return <SettingsScreen user={user} onLogout={handleLogout} onBack={() => setCurrentView('dashboard')} />;
+      case 'subject_portal':
+        if (!subject || !modules) return <div>Erreur de chargement</div>;
+        return (
+            <SubjectPortal 
+                subject={subject}
+                modules={modules}
+                onBack={() => { setCurrentView('dashboard'); setActiveTab(Tab.DASHBOARD); }}
+                onStart={handleEnterMap}
+            />
+        );
 
       case 'subject_map':
-        const subject = CURRICULUM_SUBJECTS[gradeLevel].find(s => s.id === selectedSubjectId);
-        // CRITICAL: Pass the LIVE curriculum state
-        const modules = selectedSubjectId ? curriculum[gradeLevel]?.[selectedSubjectId] : [];
-        if (!subject || !modules) return <div>Sujet introuvable</div>;
+        if (!subject || !modules) return <div>Erreur de chargement du sujet</div>;
         return (
             <SubjectMap 
                 subject={subject}
                 modules={modules}
                 isLoading={isContentLoading}
                 onStartLesson={handleStartLesson}
-                onBack={() => { setCurrentView('dashboard'); setActiveTab(Tab.DASHBOARD); }}
+                onBack={() => setCurrentView('subject_portal')}
             />
         );
 
       case 'lesson':
-        if (!selectedChapterId) return <div>Erreur</div>;
-        
-        // CRITICAL: FIND LIVE CHAPTER
         let liveChapter: Chapter | null = null;
-        if (selectedSubjectId) {
-             const mods = curriculum[gradeLevel]?.[selectedSubjectId];
-             if (mods) {
-                 for (const m of mods) {
-                     for (const u of m.units) {
-                         const c = u.chapters.find((ch: any) => ch.id === selectedChapterId);
-                         if (c) { liveChapter = c; break; }
-                     }
-                     if (liveChapter) break;
+        if (selectedSubjectId && selectedChapterId) {
+             const mods = curriculum[gradeLevel]?.[selectedSubjectId] || [];
+             for (const m of mods) {
+                 for (const u of m.units) {
+                     const c = u.chapters.find((ch: any) => ch.id === selectedChapterId);
+                     if (c) { liveChapter = c; break; }
                  }
+                 if (liveChapter) break;
              }
         }
 
@@ -268,16 +247,21 @@ const App: React.FC = () => {
             <LearningScreen 
                 chapter={liveChapter}
                 isLoading={isContentLoading} 
-                onStepComplete={(stepId) => handleStepComplete(liveChapter!.id, stepId)}
-                onCompleteChapter={() => handleChapterComplete(liveChapter!.id)}
+                onStepComplete={(stepId) => handleStepSuccess(liveChapter!.id, stepId)}
+                onCompleteChapter={() => setCurrentView('subject_map')}
                 onExit={() => setCurrentView('subject_map')}
             />
         );
 
+      case 'agenda': return <AgendaScreen />;
+      case 'library': return <LibraryScreen onBack={() => { setCurrentView('dashboard'); setActiveTab(Tab.DASHBOARD); }} />;
+      case 'notifications': return <NotificationScreen onBack={() => { setCurrentView('dashboard'); setActiveTab(Tab.DASHBOARD); }} />;
+      case 'store': return <StoreScreen userXp={user.xp} onUpdateXp={(xp) => setUser({...user, xp})} onBack={() => { setCurrentView('dashboard'); setActiveTab(Tab.DASHBOARD); }} />;
+      case 'settings': return <SettingsScreen user={user} onLogout={handleLogout} onBack={() => setCurrentView('dashboard')} />;
       case 'sis': return <SisScreen />;
       case 'social': return <SocialScreen defaultTab={socialDefaultTab} />;
 
-      default: return <DashboardScreen user={user} onOpenProfile={() => setIsProfileOpen(true)} onOpenSubject={handleOpenSubject} currentGrade={gradeLevel} onGradeChange={setGradeLevel} />;
+      default: return null;
     }
   };
 
@@ -306,7 +290,7 @@ const App: React.FC = () => {
         </AnimatePresence>
       </main>
 
-      {['dashboard', 'sis', 'social', 'agenda'].includes(currentView) && (
+      {['dashboard', 'sis', 'social', 'agenda', 'store', 'notifications'].includes(currentView) && (
         <BottomNav activeTab={activeTab} onTabChange={handleTabChange} />
       )}
 

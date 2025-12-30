@@ -1,26 +1,26 @@
 
 import React, { useState, useEffect } from 'react';
 import { 
-    CheckCircle2, ArrowRight, Trophy, XCircle, 
-    ChevronLeft, MessageSquare, Star, Send, MoveDown, MousePointerClick 
+    CheckCircle2, ArrowRight, Trophy, ChevronLeft, MessageSquare, 
+    MoveDown, MousePointerClick, Flag 
 } from 'lucide-react';
-import { Chapter, ParsonsItem, QuizContent, Comment } from '../types';
+import { Chapter, ParsonsItem, QuizContent } from '../types';
 import TheoryPlayer from './TheoryPlayer';
 import { LessonSkeleton } from './Loaders';
 import { motion, AnimatePresence } from 'framer-motion';
 
-// --- SUB COMPONENTS ---
+// ============================================================================
+// SUB-COMPONENTS (INTERACTION LAYERS)
+// ============================================================================
 
 /**
- * SEQUENCE BUILDER (LUDIC PARSONS)
- * A tap-to-order game replacing standard drag-and-drop.
+ * SEQUENCE BUILDER (Parsons Problems)
  */
 const SequenceBuilder: React.FC<{ items: ParsonsItem[], onValidate: (success: boolean) => void }> = ({ items: initialItems, onValidate }) => {
     const [pool, setPool] = useState<ParsonsItem[]>([]);
     const [answer, setAnswer] = useState<ParsonsItem[]>([]);
     const [isError, setIsError] = useState(false);
 
-    // Initialize randomized pool
     useEffect(() => {
         setPool([...initialItems].sort(() => Math.random() - 0.5));
         setAnswer([]);
@@ -40,7 +40,7 @@ const SequenceBuilder: React.FC<{ items: ParsonsItem[], onValidate: (success: bo
 
     const checkOrder = () => {
         const currentIds = answer.map(i => i.id).join(',');
-        const correctIds = initialItems.map(i => i.id).join(','); // Correct order comes from props
+        const correctIds = initialItems.map(i => i.id).join(',');
         
         if (currentIds === correctIds) {
             onValidate(true);
@@ -59,7 +59,6 @@ const SequenceBuilder: React.FC<{ items: ParsonsItem[], onValidate: (success: bo
                 </p>
             </div>
 
-            {/* Answer Zone */}
             <div className={`flex-1 bg-slate-50 rounded-3xl p-4 border-2 transition-colors duration-300 relative ${isError ? 'border-red-300 bg-red-50' : 'border-dashed border-slate-200'}`}>
                 {answer.length === 0 && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-300 pointer-events-none">
@@ -87,7 +86,6 @@ const SequenceBuilder: React.FC<{ items: ParsonsItem[], onValidate: (success: bo
                 </div>
             </div>
 
-            {/* Pool Zone */}
             <div className="mt-4 min-h-[140px]">
                 <p className="text-xs font-bold text-slate-400 uppercase mb-2 ml-1">Blocs disponibles</p>
                 <div className="flex flex-wrap gap-2">
@@ -164,9 +162,9 @@ const QuizPlayer: React.FC<{ quiz: QuizContent, onValidate: (success: boolean) =
 };
 
 /**
- * SUCCESS VIEW
+ * SUCCESS VIEW (The Trophy Animation)
  */
-const SuccessView: React.FC<{ onNext: () => void, isLastStep: boolean }> = ({ onNext, isLastStep }) => {
+const SuccessView: React.FC<{ onContinue: () => void, isLastStep: boolean }> = ({ onContinue, isLastStep }) => {
     return (
         <motion.div 
             initial={{ opacity: 0, scale: 0.9 }} 
@@ -174,15 +172,17 @@ const SuccessView: React.FC<{ onNext: () => void, isLastStep: boolean }> = ({ on
             className="h-full flex flex-col items-center justify-center p-6 text-center"
         >
             <div className="relative mb-8">
-                <div className="absolute inset-0 bg-emerald-200 rounded-full blur-2xl opacity-40 animate-pulse"></div>
-                <div className="w-32 h-32 bg-gradient-to-tr from-emerald-400 to-teal-500 text-white rounded-[32px] flex items-center justify-center shadow-xl shadow-emerald-200 rotate-3">
+                <div className="absolute inset-0 bg-emerald-200 rounded-full blur-3xl opacity-40 animate-pulse"></div>
+                <div className="w-32 h-32 bg-gradient-to-tr from-emerald-400 to-teal-500 text-white rounded-[32px] flex items-center justify-center shadow-2xl shadow-emerald-200 rotate-3 animate-[bounce_1s_infinite]">
                     <Trophy size={64} />
                 </div>
             </div>
             <h2 className="text-3xl font-bold text-slate-800 mb-2">Excellent !</h2>
-            <p className="text-slate-500 mb-10 text-lg">Tu maîtrises ce point à la perfection.</p>
+            <p className="text-slate-500 mb-10 text-lg">
+                {isLastStep ? "Chapitre terminé avec brio." : "Tu maîtrises ce point."}
+            </p>
             <button 
-                onClick={onNext} 
+                onClick={onContinue} 
                 className="w-full max-w-xs py-4 bg-slate-900 text-white rounded-2xl font-bold shadow-xl shadow-slate-300 hover:shadow-2xl hover:scale-105 transition-all flex items-center justify-center gap-2"
             >
                 {isLastStep ? 'Terminer le Chapitre' : 'Continuer'} <ArrowRight size={20} />
@@ -191,8 +191,25 @@ const SuccessView: React.FC<{ onNext: () => void, isLastStep: boolean }> = ({ on
     );
 };
 
+/**
+ * END OF CHAPTER VIEW
+ */
+const ChapterCompleteView: React.FC<{ onExit: () => void }> = ({ onExit }) => (
+    <div className="h-full flex flex-col items-center justify-center p-6 text-center">
+        <div className="w-24 h-24 bg-yellow-100 text-yellow-600 rounded-full flex items-center justify-center mb-6">
+            <Flag size={48} fill="currentColor" />
+        </div>
+        <h2 className="text-2xl font-bold text-slate-800">Chapitre Terminé</h2>
+        <p className="text-slate-500 mb-8">Bravo, tu as validé toutes les étapes !</p>
+        <button onClick={onExit} className="px-8 py-3 bg-slate-900 text-white rounded-xl font-bold">
+            Retour au parcours
+        </button>
+    </div>
+);
+
+
 // ============================================================================
-// MAIN ENGINE COMPONENT
+// MAIN PURE COMPONENT
 // ============================================================================
 
 interface LearningEngineProps {
@@ -206,114 +223,105 @@ interface LearningEngineProps {
 const LearningEngine: React.FC<LearningEngineProps> = ({ 
     chapter, 
     isLoading, 
-    onStepComplete,
+    onStepComplete, 
     onCompleteChapter, 
     onExit 
 }) => {
-    // Local UI State only. No data logic.
-    const [currentStepIndex, setCurrentStepIndex] = useState(0);
-    const [stepSuccess, setStepSuccess] = useState(false);
-    const [showFeedback, setShowFeedback] = useState(false);
+    // Transient local state for the success animation ONLY.
+    // Progression state is completely derived from props.
+    const [showSuccess, setShowSuccess] = useState(false);
+    const [feedbackVisible, setFeedbackVisible] = useState(false);
 
-    // Sync Cursor with Parent State
+    // 1. DERIVE ACTIVE STEP
+    // We strictly look for the step marked as 'current'.
+    const activeStep = chapter.steps.find(s => s.status === 'current');
+    const isChapterFullyComplete = chapter.status === 'completed' && !activeStep;
+
+    // 2. AUTO-RESET EFFECT
+    // When the parent (App.tsx) updates the chapter prop (unlocks next step),
+    // we automatically hide the success screen to reveal the new content.
     useEffect(() => {
-        const activeIndex = chapter.steps.findIndex(s => s.status === 'current');
-        
-        if (activeIndex !== -1) {
-             setCurrentStepIndex(activeIndex);
-        } else {
-             // Fallback logic
-             const lastCompleted = chapter.steps.map(s => s.status).lastIndexOf('completed');
-             if (lastCompleted !== -1 && lastCompleted < chapter.steps.length - 1) {
-                 setCurrentStepIndex(lastCompleted + 1);
-             } else if (lastCompleted === chapter.steps.length - 1) {
-                 setCurrentStepIndex(lastCompleted);
-             } else {
-                 setCurrentStepIndex(0);
-             }
+        setShowSuccess(false);
+    }, [chapter]); // Dependency on chapter object ensures reaction to deep updates
+
+    if (isLoading) return <LessonSkeleton />;
+
+    // 3. HANDLERS
+    const handleSuccessTrigger = (success: boolean) => {
+        if (success) {
+            setShowSuccess(true);
         }
-        setStepSuccess(false);
-    }, [chapter]); // Re-run when parent passes new chapter object
+    };
 
-    if (isLoading) {
-        return <LessonSkeleton />;
-    }
-
-    const currentStep = chapter.steps[currentStepIndex];
-
-    const goToNextStep = () => {
-        if (currentStepIndex < chapter.steps.length - 1) {
-            // Optimistic update for UI smoothness, but real logic is in useEffect
-            setCurrentStepIndex(prev => prev + 1);
-            setStepSuccess(false);
-        } else {
+    const handleContinue = () => {
+        if (activeStep) {
+            // Notify parent. Parent will update state -> Props change -> Effect runs -> Success hides.
+            onStepComplete(activeStep.id);
+        } else if (isChapterFullyComplete) {
             onCompleteChapter();
         }
     };
 
-    const handleStepValidation = (success: boolean) => {
-        if (success) {
-            setStepSuccess(true);
-            // Notify Parent -> Updates State -> Triggers Effect -> Moves Slide
-            onStepComplete(currentStep.id);
-        }
-    };
-
-    const renderCurrentStep = () => {
-        if (stepSuccess && currentStep.type !== 'theory') {
-            return <SuccessView onNext={goToNextStep} isLastStep={currentStepIndex === chapter.steps.length - 1} />;
+    // 4. RENDERER
+    const renderContent = () => {
+        // A. If transient success state is active, show Trophy
+        if (showSuccess) {
+            // Check if this is the absolute last step of the array
+            const isLast = activeStep ? chapter.steps.indexOf(activeStep) === chapter.steps.length - 1 : false;
+            return <SuccessView onContinue={handleContinue} isLastStep={isLast} />;
         }
 
-        switch (currentStep.type) {
+        // B. If no active step found, check if chapter is done
+        if (!activeStep) {
+            if (isChapterFullyComplete) return <ChapterCompleteView onExit={onCompleteChapter} />;
+            return <div className="p-10 text-center text-slate-400">Erreur: Aucune étape active.</div>;
+        }
+
+        // C. Render the Active Step Content based on type
+        switch (activeStep.type) {
             case 'theory':
                 return (
                     <div className="h-full flex flex-col">
                         <div className="flex-1 overflow-y-auto no-scrollbar">
                            <TheoryPlayer 
-                                chapter={{...chapter, content: currentStep.content, title: currentStep.title} as any} 
-                                onComplete={() => handleStepValidation(true)}
-                                onBack={() => {}} 
+                                chapter={{...chapter, content: activeStep.content, title: activeStep.title} as any} 
+                                onComplete={() => handleSuccessTrigger(true)}
+                                onBack={onExit} 
                             />
                         </div>
-                        {stepSuccess && (
-                             <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="p-4 bg-white/80 backdrop-blur border-t border-slate-100 z-50 absolute bottom-0 w-full">
-                                <button onClick={goToNextStep} className="w-full py-4 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-emerald-200 hover:shadow-xl transition-all">
-                                    Continuer <ArrowRight size={20} />
-                                </button>
-                             </motion.div>
-                        )}
                     </div>
                 );
             
             case 'checkpoint':
+                return (
+                    <div className="h-full p-6 pt-2">
+                         <QuizPlayer quiz={activeStep.quiz} onValidate={handleSuccessTrigger} />
+                    </div>
+                );
+
             case 'exercise':
                 return (
                     <div className="h-full p-6 pt-2">
-                         {currentStep.quiz ? (
-                             <QuizPlayer quiz={currentStep.quiz} onValidate={handleStepValidation} />
-                         ) : currentStep.parsons ? (
-                             <SequenceBuilder items={currentStep.parsons} onValidate={handleStepValidation} />
-                         ) : (
-                             <div className="text-center text-slate-400 mt-10">Contenu manquant</div>
-                         )}
+                         <SequenceBuilder items={activeStep.parsons} onValidate={handleSuccessTrigger} />
                     </div>
                 );
             
             default: 
-                return null;
+                return <div className="text-center text-slate-400 mt-10">Type de contenu inconnu</div>;
         }
     };
 
     return (
         <div className="h-full flex flex-col bg-[#F8FAFC] relative">
-            {/* Top Bar */}
+            {/* Top Navigation Bar */}
             <div className="px-6 py-4 flex items-center justify-between sticky top-0 z-40">
                 <button onClick={onExit} className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-slate-400 hover:text-slate-700 shadow-sm border border-slate-100 transition-colors">
                     <ChevronLeft size={24} />
                 </button>
                 
+                {/* Progress Indicators */}
                 <div className="flex items-center gap-2 bg-white/50 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/50 shadow-sm">
-                    {chapter.steps.map((step, idx) => {
+                    {chapter.steps.map((step) => {
                         let color = "bg-slate-200"; 
                         if (step.status === 'completed') color = "bg-emerald-400";
                         else if (step.status === 'current') color = "bg-indigo-500 scale-125";
@@ -328,19 +336,19 @@ const LearningEngine: React.FC<LearningEngineProps> = ({
                     })}
                 </div>
 
-                <button onClick={() => setShowFeedback(true)} className="w-10 h-10 bg-white text-indigo-500 rounded-full flex items-center justify-center shadow-sm border border-slate-100 hover:bg-indigo-50 transition-colors">
+                <button onClick={() => setFeedbackVisible(true)} className="w-10 h-10 bg-white text-indigo-500 rounded-full flex items-center justify-center shadow-sm border border-slate-100 hover:bg-indigo-50 transition-colors">
                      <MessageSquare size={20} />
                 </button>
             </div>
 
-            {/* Content Card */}
+            {/* Main Content Area */}
             <div className="flex-1 px-4 pb-4 overflow-hidden relative">
                 <motion.div 
                     initial={{ y: 20, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
                     className="bg-white w-full h-full rounded-[40px] shadow-2xl shadow-indigo-500/5 overflow-hidden border border-white/50 relative"
                 >
-                    {renderCurrentStep()}
+                    {renderContent()}
                 </motion.div>
             </div>
         </div>

@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { 
   Flame, Trophy, BookOpen, ChevronRight, 
   MoreHorizontal, ChevronDown, Check, GraduationCap, PlayCircle, Star,
-  Users, School, CalendarClock, Book, Bell
+  Users, School, CalendarClock, Book, Bell, ShoppingBag
 } from 'lucide-react';
 import { CURRICULUM_SUBJECTS, CURRICULUM_MODULES } from '../data/curriculum';
 import { Subject, GradeLevel, Tab, User } from '../types';
@@ -111,21 +111,11 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
-                {/* Bell Icon for Notifications */}
-                <motion.button 
-                    whileTap={{ scale: 0.9 }}
-                    onClick={onNavigateToNotifications}
-                    className="w-10 h-10 bg-white/70 backdrop-blur-xl border border-white/60 rounded-full flex items-center justify-center text-slate-600 shadow-sm relative"
-                >
-                    <Bell size={20} />
-                    <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
-                </motion.button>
-
                 <div className="relative">
                     <motion.button 
                         whileTap={{ scale: 0.95 }}
                         onClick={() => setShowGradeMenu(!showGradeMenu)}
-                        className="flex items-center gap-2 bg-white/70 backdrop-blur-xl border border-white/60 shadow-sm pl-3 pr-2 py-2 rounded-full text-xs font-bold text-slate-700"
+                        className="flex items-center gap-2 bg-white/70 backdrop-blur-xl border border-white/60 shadow-sm pl-3 pr-2 py-2 rounded-full text-xs font-bold text-slate-700 hover:bg-white"
                     >
                         <div className="bg-indigo-100 p-1 rounded-full text-indigo-600">
                             <GraduationCap size={12} />
