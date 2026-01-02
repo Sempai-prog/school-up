@@ -3,10 +3,10 @@ import React, { useState } from 'react';
 import { 
   Flame, Trophy, BookOpen, ChevronRight, 
   MoreHorizontal, ChevronDown, Check, GraduationCap, PlayCircle, Star,
-  Users, School, CalendarClock, Book, Bell, ShoppingBag
+  Users, School, CalendarClock, Book, Target, Gift, Sun, CheckCircle2
 } from 'lucide-react';
 import { CURRICULUM_SUBJECTS, CURRICULUM_MODULES } from '../data/curriculum';
-import { Subject, GradeLevel, Tab, User } from '../types';
+import { Subject, GradeLevel, Tab, User, Quest } from '../types';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface DashboardScreenProps {
@@ -37,6 +37,13 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({
     onGradeChange 
 }) => {
   const [showGradeMenu, setShowGradeMenu] = useState(false);
+  // Local state to simulate quest claiming immediately without a full app reload
+  const [localQuests, setLocalQuests] = useState<Quest[]>(user.quests || []);
+
+  const handleClaimQuest = (questId: string) => {
+      setLocalQuests(prev => prev.map(q => q.id === questId ? { ...q, claimed: true } : q));
+      // In a real app, this would trigger an API call and update global user XP
+  };
 
   // Data Loading
   const activeSubjects = CURRICULUM_SUBJECTS[currentGrade] || [];
@@ -76,6 +83,14 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({
   const itemVariants = {
     hidden: { opacity: 0, y: 20 },
     show: { opacity: 1, y: 0 }
+  };
+
+  const QuestIcon = ({ name, size }: { name: string, size: number }) => {
+      switch(name) {
+          case 'Target': return <Target size={size} />;
+          case 'Sun': return <Sun size={size} />;
+          default: return <BookOpen size={size} />;
+      }
   };
 
   return (
@@ -194,6 +209,53 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({
                 </div>
             </div>
        </motion.div>
+
+       {/* DAILY QUESTS WIDGET (NEW) */}
+       {localQuests.length > 0 && (
+           <motion.div variants={itemVariants} className="space-y-3">
+               <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                   <Target className="text-indigo-500" size={20} /> Objectifs du Jour
+               </h3>
+               <div className="bg-white rounded-[24px] p-4 border border-slate-100 shadow-sm space-y-3">
+                   {localQuests.map((quest) => {
+                       const progress = (quest.current / quest.target) * 100;
+                       return (
+                           <div key={quest.id} className="flex items-center justify-between">
+                               <div className="flex items-center gap-3">
+                                   <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${quest.completed ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
+                                       <QuestIcon name={quest.icon} size={20} />
+                                   </div>
+                                   <div>
+                                       <h4 className={`text-sm font-bold ${quest.completed ? 'text-slate-800' : 'text-slate-600'}`}>{quest.title}</h4>
+                                       <div className="w-24 h-1.5 bg-slate-100 rounded-full mt-1 overflow-hidden">
+                                           <div className="h-full bg-indigo-500 rounded-full transition-all duration-500" style={{ width: `${progress}%` }}></div>
+                                       </div>
+                                   </div>
+                               </div>
+                               
+                               {quest.completed && !quest.claimed ? (
+                                   <motion.button
+                                       initial={{ scale: 0.8 }}
+                                       animate={{ scale: 1 }}
+                                       whileTap={{ scale: 0.9 }}
+                                       onClick={() => handleClaimQuest(quest.id)}
+                                       className="bg-gradient-to-r from-yellow-400 to-orange-500 text-white px-3 py-1.5 rounded-full text-[10px] font-bold shadow-md shadow-orange-200 flex items-center gap-1 animate-pulse"
+                                   >
+                                       <Gift size={12} /> Récupérer {quest.xpReward} XP
+                                   </motion.button>
+                               ) : quest.claimed ? (
+                                   <div className="text-emerald-500 flex items-center gap-1 text-[10px] font-bold bg-emerald-50 px-2 py-1 rounded-full">
+                                       <CheckCircle2 size={12} /> Fait
+                                   </div>
+                               ) : (
+                                   <span className="text-xs font-bold text-slate-400">{quest.current}/{quest.target}</span>
+                               )}
+                           </div>
+                       );
+                   })}
+               </div>
+           </motion.div>
+       )}
 
        {/* STATS ROW */}
        <div className="grid grid-cols-2 gap-4">

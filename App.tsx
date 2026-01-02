@@ -1,9 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
-import { Tab, GradeLevel, Chapter, User, CurriculumState } from './types';
+import { Tab, GradeLevel, Chapter, User, CurriculumState, AppTheme } from './types';
 import { MOCK_USER } from './constants';
 import { CURRICULUM_SUBJECTS, CURRICULUM_MODULES as INITIAL_MODULES } from './data/curriculum';
 import DashboardScreen from './components/DashboardScreen';
+import TeacherDashboard from './components/TeacherDashboard';
 import LearningScreen from './components/LearningEngine';
 import SubjectMap from './components/SubjectMap';
 import SubjectPortal from './components/SubjectPortal';
@@ -20,8 +21,8 @@ import AuthScreen from './components/AuthScreen';
 import { AppSplash } from './components/Loaders';
 import { AnimatePresence, motion } from 'framer-motion';
 
-// Define View State Types - Added 'subject_portal'
-type ViewState = 'dashboard' | 'subject_portal' | 'subject_map' | 'lesson' | 'sis' | 'social' | 'agenda' | 'library' | 'store' | 'notifications' | 'settings';
+// Define View State Types
+type ViewState = 'dashboard' | 'teacher_dashboard' | 'subject_portal' | 'subject_map' | 'lesson' | 'sis' | 'social' | 'agenda' | 'library' | 'store' | 'notifications' | 'settings';
 
 const App: React.FC = () => {
   // --- LOADING STATES ---
@@ -30,7 +31,7 @@ const App: React.FC = () => {
 
   // --- USER SESSION STATE ---
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [gradeLevel, setGradeLevel] = useState<GradeLevel>('tle'); // Default to Terminale for demo 
+  const [gradeLevel, setGradeLevel] = useState<GradeLevel>('tle'); 
   const [activeTab, setActiveTab] = useState<Tab>(Tab.DASHBOARD);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [user, setUser] = useState<User>(MOCK_USER); 
@@ -44,7 +45,7 @@ const App: React.FC = () => {
   // --- CORE CURRICULUM STATE (THE BRAIN) ---
   const [curriculum, setCurriculum] = useState<CurriculumState>(() => {
     try {
-        const saved = localStorage.getItem('skoolup_curriculum_v4'); // Incremented version
+        const saved = localStorage.getItem('skoolup_curriculum_v4'); 
         if (saved) {
             return JSON.parse(saved);
         }
@@ -68,8 +69,16 @@ const App: React.FC = () => {
 
   // --- AUTH HANDLERS ---
   const handleLogin = (role: string) => {
-    setUser(prev => ({ ...prev, role: role as 'student' | 'teacher' }));
+    const updatedUser = { ...user, role: role as 'student' | 'teacher' };
+    setUser(updatedUser);
     setIsAuthenticated(true);
+    
+    // Redirect based on Role
+    if (role === 'teacher') {
+        setCurrentView('teacher_dashboard');
+    } else {
+        setCurrentView('dashboard');
+    }
   };
 
   const handleLogout = () => {
@@ -78,10 +87,19 @@ const App: React.FC = () => {
     setCurrentView('dashboard');
   };
 
+  const handleThemeChange = (theme: AppTheme) => {
+      setUser(prev => ({ ...prev, theme }));
+  };
+
   // --- NAVIGATION HANDLERS ---
   const handleTabChange = (tab: Tab) => {
     setActiveTab(tab);
-    if (tab === Tab.DASHBOARD) setCurrentView('dashboard');
+    
+    // Role-based Dashboard routing
+    if (tab === Tab.DASHBOARD) {
+        setCurrentView(user.role === 'teacher' ? 'teacher_dashboard' : 'dashboard');
+    }
+    
     if (tab === Tab.SIS) setCurrentView('sis');
     if (tab === Tab.SOCIAL) {
         setCurrentView('social');
@@ -92,21 +110,23 @@ const App: React.FC = () => {
     if (tab === Tab.NOTIFICATIONS) setCurrentView('notifications');
     if (tab === Tab.LEARNING) {
       if (currentView !== 'subject_map' && currentView !== 'lesson' && currentView !== 'subject_portal') {
-          setCurrentView('dashboard'); 
+          // If teacher clicks "Learning", maybe go to content review or back to dashboard for now
+          // For simplicity, let's keep student flow or redirect if teacher
+          setCurrentView(user.role === 'teacher' ? 'teacher_dashboard' : 'dashboard'); 
       }
     }
   };
 
-  // 1. Dashboard -> Portal
+  // 1. Dashboard -> Portal (Updated Flow)
   const handleOpenSubject = (subjectId: string) => {
     setSelectedSubjectId(subjectId);
     setIsContentLoading(true);
-    setCurrentView('subject_portal'); // Now goes to Portal first
+    setCurrentView('subject_portal'); // Go to Portal first, not Map
     setActiveTab(Tab.LEARNING);
     setTimeout(() => setIsContentLoading(false), 400);
   };
 
-  // 2. Portal -> Map
+  // 2. Portal -> Map (New Handler)
   const handleEnterMap = () => {
       setIsContentLoading(true);
       setCurrentView('subject_map');
@@ -201,8 +221,17 @@ const App: React.FC = () => {
             onNavigateToNotifications={() => { setCurrentView('notifications'); setActiveTab(Tab.NOTIFICATIONS); }}
             onNavigateToStore={() => { setCurrentView('store'); setActiveTab(Tab.STORE); }}
             currentGrade={gradeLevel}
-            onGradeChange={(g) => { setGradeLevel(g); /* Reset navigation if needed */ }}
+            onGradeChange={(g) => { setGradeLevel(g); }}
           />
+        );
+
+      case 'teacher_dashboard':
+        return (
+            <TeacherDashboard 
+                user={user}
+                onOpenProfile={() => setIsProfileOpen(true)}
+                onNavigateToAgenda={() => { setCurrentView('agenda'); setActiveTab(Tab.AGENDA); }}
+            />
         );
 
       case 'subject_portal':
@@ -212,7 +241,7 @@ const App: React.FC = () => {
                 subject={subject}
                 modules={modules}
                 onBack={() => { setCurrentView('dashboard'); setActiveTab(Tab.DASHBOARD); }}
-                onStart={handleEnterMap}
+                onStart={handleEnterMap} // Transition to Map
             />
         );
 
@@ -224,7 +253,7 @@ const App: React.FC = () => {
                 modules={modules}
                 isLoading={isContentLoading}
                 onStartLesson={handleStartLesson}
-                onBack={() => setCurrentView('subject_portal')}
+                onBack={() => setCurrentView('subject_portal')} // Corrected back path
             />
         );
 
@@ -256,7 +285,13 @@ const App: React.FC = () => {
       case 'agenda': return <AgendaScreen />;
       case 'library': return <LibraryScreen onBack={() => { setCurrentView('dashboard'); setActiveTab(Tab.DASHBOARD); }} />;
       case 'notifications': return <NotificationScreen onBack={() => { setCurrentView('dashboard'); setActiveTab(Tab.DASHBOARD); }} />;
-      case 'store': return <StoreScreen userXp={user.xp} onUpdateXp={(xp) => setUser({...user, xp})} onBack={() => { setCurrentView('dashboard'); setActiveTab(Tab.DASHBOARD); }} />;
+      case 'store': 
+        return <StoreScreen 
+            userXp={user.xp} 
+            onUpdateXp={(xp) => setUser({...user, xp})} 
+            onApplyTheme={handleThemeChange}
+            onBack={() => { setCurrentView('dashboard'); setActiveTab(Tab.DASHBOARD); }} 
+        />;
       case 'settings': return <SettingsScreen user={user} onLogout={handleLogout} onBack={() => setCurrentView('dashboard')} />;
       case 'sis': return <SisScreen />;
       case 'social': return <SocialScreen defaultTab={socialDefaultTab} />;
@@ -268,8 +303,11 @@ const App: React.FC = () => {
   if (isAppLoading) return <AppSplash />;
   if (!isAuthenticated) return <AuthScreen onLogin={handleLogin} />;
 
+  // Theme application style injection
+  const themeClass = user.theme === 'neon' ? 'hue-rotate-[290deg] invert-[.9]' : '';
+
   return (
-    <div className="flex flex-col h-full bg-[#F8FAFC] max-w-md mx-auto shadow-2xl overflow-hidden relative border-x border-slate-200">
+    <div className={`flex flex-col h-full bg-[#F8FAFC] max-w-md mx-auto shadow-2xl overflow-hidden relative border-x border-slate-200 ${themeClass}`}>
       <div className="fixed top-0 left-0 w-full h-full pointer-events-none z-0 overflow-hidden max-w-md mx-auto">
          <div className="absolute top-[-10%] right-[-10%] w-96 h-96 bg-indigo-200/20 rounded-full blur-[80px]" />
          <div className="absolute bottom-[20%] left-[-20%] w-80 h-80 bg-blue-200/20 rounded-full blur-[80px]" />
@@ -290,7 +328,7 @@ const App: React.FC = () => {
         </AnimatePresence>
       </main>
 
-      {['dashboard', 'sis', 'social', 'agenda', 'store', 'notifications'].includes(currentView) && (
+      {['dashboard', 'teacher_dashboard', 'sis', 'social', 'agenda', 'store', 'notifications'].includes(currentView) && (
         <BottomNav activeTab={activeTab} onTabChange={handleTabChange} />
       )}
 

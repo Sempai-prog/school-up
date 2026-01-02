@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
     CheckCircle2, ArrowRight, Trophy, ChevronLeft, MessageSquare, 
-    MoveDown, MousePointerClick, Flag 
+    MoveDown, MousePointerClick, Flag, Flame, XCircle
 } from 'lucide-react';
 import { Chapter, ParsonsItem, QuizContent } from '../types';
 import TheoryPlayer from './TheoryPlayer';
@@ -46,6 +46,7 @@ const SequenceBuilder: React.FC<{ items: ParsonsItem[], onValidate: (success: bo
             onValidate(true);
         } else {
             setIsError(true);
+            onValidate(false); // Notify failure to reset combo
             setTimeout(() => setIsError(false), 800);
         }
     };
@@ -129,7 +130,12 @@ const QuizPlayer: React.FC<{ quiz: QuizContent, onValidate: (success: boolean) =
         if (!selectedOption) return;
         setSubmitted(true);
         const isCorrect = quiz.options.find(o => o.id === selectedOption)?.isCorrect || false;
-        setTimeout(() => onValidate(isCorrect), 1200);
+        
+        // Immediate feedback delay
+        setTimeout(() => {
+             onValidate(isCorrect);
+             // Reset if wrong to allow retry or handle externally (here we assume strict flow)
+        }, 1200);
     };
 
     return (
@@ -227,35 +233,36 @@ const LearningEngine: React.FC<LearningEngineProps> = ({
     onCompleteChapter, 
     onExit 
 }) => {
-    // Transient local state for the success animation ONLY.
-    // Progression state is completely derived from props.
+    // Transient local state
     const [showSuccess, setShowSuccess] = useState(false);
-    const [feedbackVisible, setFeedbackVisible] = useState(false);
+    const [combo, setCombo] = useState(0); // NEW: Combo System
+    const [shake, setShake] = useState(false); // NEW: Error Feedback
 
     // 1. DERIVE ACTIVE STEP
-    // We strictly look for the step marked as 'current'.
     const activeStep = chapter.steps.find(s => s.status === 'current');
     const isChapterFullyComplete = chapter.status === 'completed' && !activeStep;
 
     // 2. AUTO-RESET EFFECT
-    // When the parent (App.tsx) updates the chapter prop (unlocks next step),
-    // we automatically hide the success screen to reveal the new content.
     useEffect(() => {
         setShowSuccess(false);
-    }, [chapter]); // Dependency on chapter object ensures reaction to deep updates
+    }, [chapter]);
 
     if (isLoading) return <LessonSkeleton />;
 
     // 3. HANDLERS
     const handleSuccessTrigger = (success: boolean) => {
         if (success) {
+            setCombo(c => c + 1);
             setShowSuccess(true);
+        } else {
+            setCombo(0);
+            setShake(true);
+            setTimeout(() => setShake(false), 500);
         }
     };
 
     const handleContinue = () => {
         if (activeStep) {
-            // Notify parent. Parent will update state -> Props change -> Effect runs -> Success hides.
             onStepComplete(activeStep.id);
         } else if (isChapterFullyComplete) {
             onCompleteChapter();
@@ -264,20 +271,16 @@ const LearningEngine: React.FC<LearningEngineProps> = ({
 
     // 4. RENDERER
     const renderContent = () => {
-        // A. If transient success state is active, show Trophy
         if (showSuccess) {
-            // Check if this is the absolute last step of the array
             const isLast = activeStep ? chapter.steps.indexOf(activeStep) === chapter.steps.length - 1 : false;
             return <SuccessView onContinue={handleContinue} isLastStep={isLast} />;
         }
 
-        // B. If no active step found, check if chapter is done
         if (!activeStep) {
             if (isChapterFullyComplete) return <ChapterCompleteView onExit={onCompleteChapter} />;
             return <div className="p-10 text-center text-slate-400">Erreur: Aucune étape active.</div>;
         }
 
-        // C. Render the Active Step Content based on type
         switch (activeStep.type) {
             case 'theory':
                 return (
@@ -291,23 +294,19 @@ const LearningEngine: React.FC<LearningEngineProps> = ({
                         </div>
                     </div>
                 );
-            
             case 'checkpoint':
                 return (
                     <div className="h-full p-6 pt-2">
                          <QuizPlayer quiz={activeStep.quiz} onValidate={handleSuccessTrigger} />
                     </div>
                 );
-
             case 'exercise':
                 return (
                     <div className="h-full p-6 pt-2">
                          <SequenceBuilder items={activeStep.parsons} onValidate={handleSuccessTrigger} />
                     </div>
                 );
-            
-            default: 
-                return <div className="text-center text-slate-400 mt-10">Type de contenu inconnu</div>;
+            default: return null;
         }
     };
 
@@ -336,16 +335,28 @@ const LearningEngine: React.FC<LearningEngineProps> = ({
                     })}
                 </div>
 
-                <button onClick={() => setFeedbackVisible(true)} className="w-10 h-10 bg-white text-indigo-500 rounded-full flex items-center justify-center shadow-sm border border-slate-100 hover:bg-indigo-50 transition-colors">
-                     <MessageSquare size={20} />
-                </button>
+                {/* Combo Meter - Replaces Chat Icon */}
+                <div className={`flex items-center gap-1 font-bold ${combo > 1 ? 'text-orange-500' : 'text-slate-300'} transition-colors`}>
+                    <motion.div
+                         animate={combo > 1 ? { scale: [1, 1.2, 1] } : {}}
+                         transition={{ repeat: Infinity, duration: 0.5 }}
+                    >
+                        <Flame size={24} fill={combo > 1 ? "currentColor" : "none"} />
+                    </motion.div>
+                    <span className="text-lg">{combo}</span>
+                </div>
             </div>
 
             {/* Main Content Area */}
             <div className="flex-1 px-4 pb-4 overflow-hidden relative">
                 <motion.div 
                     initial={{ y: 20, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
+                    animate={{ 
+                        y: 0, 
+                        opacity: 1,
+                        x: shake ? [0, -10, 10, -10, 10, 0] : 0
+                    }}
+                    transition={{ type: "spring", stiffness: 300, damping: 30 }}
                     className="bg-white w-full h-full rounded-[40px] shadow-2xl shadow-indigo-500/5 overflow-hidden border border-white/50 relative"
                 >
                     {renderContent()}

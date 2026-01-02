@@ -1,12 +1,12 @@
 
 import React, { useState } from 'react';
-import { motion } from 'framer-motion';
-import { GRADES, TRANSACTIONS } from '../constants';
+import { motion, AnimatePresence } from 'framer-motion';
+import { GRADES, TRANSACTIONS, ATTENDANCE_DATA } from '../constants';
 import { 
     CreditCard, TrendingUp, CheckCircle2, Clock, Wallet, CalendarDays, MoreVertical, ArrowUpRight,
-    AlertCircle, Gavel, UserX, Info
+    AlertCircle, Gavel, UserX, Info, Upload, X
 } from 'lucide-react';
-import { DisciplineRecord, Sanction } from '../types';
+import { DisciplineRecord, Sanction, Attendance } from '../types';
 
 const MOCK_DISCIPLINE: DisciplineRecord = {
     absences: 12, // hours
@@ -19,6 +19,7 @@ const MOCK_DISCIPLINE: DisciplineRecord = {
 
 const SisScreen: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'grades' | 'wallet' | 'discipline'>('grades');
+  const [selectedAbsence, setSelectedAbsence] = useState<Attendance | null>(null);
 
   const getGradeColor = (score: number) => {
       if (score >= 16) return 'text-emerald-500';
@@ -32,8 +33,14 @@ const SisScreen: React.FC = () => {
       return 'stroke-orange-500';
   };
 
+  const handleJustify = () => {
+      // Logic to submit justification
+      setSelectedAbsence(null);
+      // In real app, update state/backend
+  };
+
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-6 pb-32 space-y-6">
+    <div className="p-6 pb-32 space-y-6 relative">
         {/* Custom Segmented Control */}
         <div className="bg-white p-1.5 rounded-2xl shadow-sm border border-slate-100 flex relative">
              <motion.div 
@@ -221,6 +228,51 @@ const SisScreen: React.FC = () => {
                     </div>
                 </div>
 
+                {/* Attendance List (Interactive) */}
+                <div>
+                    <h3 className="font-bold text-slate-800 mb-4 ml-2 flex items-center gap-2">
+                        <UserX size={18} /> Registre d'Assiduité
+                    </h3>
+                    <div className="space-y-3">
+                        {ATTENDANCE_DATA.map((record) => (
+                            <div 
+                                key={record.id} 
+                                onClick={() => !record.justified && setSelectedAbsence(record)}
+                                className={`
+                                    p-4 rounded-2xl bg-white border border-slate-100 shadow-sm flex items-center justify-between
+                                    ${!record.justified ? 'cursor-pointer hover:border-red-200 hover:bg-red-50/30' : ''}
+                                `}
+                            >
+                                <div className="flex items-center gap-3">
+                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm ${record.status === 'present' ? 'bg-emerald-100 text-emerald-600' : record.status === 'absent' ? 'bg-red-100 text-red-600' : 'bg-orange-100 text-orange-600'}`}>
+                                        {record.status === 'present' ? 'P' : record.status === 'absent' ? 'A' : 'R'}
+                                    </div>
+                                    <div>
+                                        <h4 className="font-bold text-slate-800 text-sm">{record.date}</h4>
+                                        <p className="text-[10px] text-slate-500 font-bold uppercase">
+                                            {record.status === 'present' ? 'Présent' : record.status === 'absent' ? 'Absent' : 'Retard'}
+                                        </p>
+                                    </div>
+                                </div>
+                                
+                                {record.status !== 'present' && (
+                                    <div className="flex items-center">
+                                        {record.justified ? (
+                                            <span className="text-[10px] font-bold bg-emerald-50 text-emerald-600 px-2 py-1 rounded-md flex items-center gap-1">
+                                                <CheckCircle2 size={10} /> Justifié
+                                            </span>
+                                        ) : (
+                                            <span className="text-[10px] font-bold bg-red-50 text-red-600 px-2 py-1 rounded-md border border-red-100">
+                                                Non Justifié
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
                 {/* Sanctions List */}
                 <div>
                     <h3 className="font-bold text-slate-800 mb-4 ml-2 flex items-center gap-2">
@@ -242,17 +294,60 @@ const SisScreen: React.FC = () => {
                         ))}
                     </div>
                 </div>
-
-                {/* Info Card */}
-                <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 flex items-start gap-3">
-                    <Info className="text-blue-500 flex-shrink-0" size={20} />
-                    <p className="text-xs text-blue-800 leading-relaxed">
-                        Le calcul de la note de conduite est basé sur le nombre d'heures d'absence non justifiées et les sanctions reçues.
-                    </p>
-                </div>
              </motion.div>
         )}
-    </motion.div>
+
+        {/* JUSTIFICATION MODAL */}
+        <AnimatePresence>
+            {selectedAbsence && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                    <motion.div 
+                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                        onClick={() => setSelectedAbsence(null)}
+                    />
+                    <motion.div 
+                        initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+                        className="bg-white w-full max-w-sm rounded-3xl p-6 relative z-10 shadow-2xl"
+                    >
+                         <button onClick={() => setSelectedAbsence(null)} className="absolute top-4 right-4 p-2 hover:bg-slate-100 rounded-full">
+                             <X size={20} className="text-slate-400" />
+                         </button>
+
+                         <h3 className="text-lg font-bold text-slate-900 mb-1">Justifier l'absence</h3>
+                         <p className="text-sm text-slate-500 mb-6">Date: {selectedAbsence.date}</p>
+
+                         <div className="space-y-4">
+                             <div>
+                                 <label className="text-xs font-bold text-slate-700 uppercase mb-2 block">Motif</label>
+                                 <select className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20">
+                                     <option>Maladie</option>
+                                     <option>Décès familial</option>
+                                     <option>Rendez-vous médical</option>
+                                     <option>Autre</option>
+                                 </select>
+                             </div>
+                             
+                             <div>
+                                 <label className="text-xs font-bold text-slate-700 uppercase mb-2 block">Commentaire</label>
+                                 <textarea className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 h-24 resize-none" placeholder="Détails supplémentaires..." />
+                             </div>
+
+                             <div className="border-2 border-dashed border-slate-200 rounded-xl p-6 flex flex-col items-center justify-center text-slate-400 bg-slate-50/50 cursor-pointer hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-500 transition-colors">
+                                 <Upload size={24} className="mb-2" />
+                                 <span className="text-xs font-bold">Ajouter un justificatif (Photo/PDF)</span>
+                             </div>
+
+                             <button onClick={handleJustify} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-colors">
+                                 Envoyer la demande
+                             </button>
+                         </div>
+                    </motion.div>
+                </div>
+            )}
+        </AnimatePresence>
+
+    </div>
   );
 };
 

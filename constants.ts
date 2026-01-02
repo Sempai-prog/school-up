@@ -1,5 +1,11 @@
 
-import { User, Subject, Grade, PaymentTransaction, Post, ParsonsItem, Module, QuizContent, Attendance, Thread, Message, Badge } from './types';
+import { User, Subject, Grade, PaymentTransaction, Post, ParsonsItem, Module, QuizContent, Attendance, Thread, Message, Badge, Quest, ClassGroup } from './types';
+
+export const MOCK_QUESTS: Quest[] = [
+    { id: 'q1', title: 'Compléter 1 Leçon', target: 1, current: 0, xpReward: 50, icon: 'BookOpen', completed: false, claimed: false },
+    { id: 'q2', title: 'Score parfait au Quiz', target: 1, current: 1, xpReward: 100, icon: 'Target', completed: true, claimed: false },
+    { id: 'q3', title: 'Connexion matinale', target: 1, current: 1, xpReward: 20, icon: 'Sun', completed: true, claimed: true },
+];
 
 export const MOCK_USER: User = {
   id: 'u1',
@@ -12,7 +18,15 @@ export const MOCK_USER: User = {
   avatarUrl: 'https://picsum.photos/id/64/200/200',
   role: 'student',
   isPremium: false,
+  theme: 'light', 
+  quests: MOCK_QUESTS,
 };
+
+export const MOCK_TEACHER_CLASSES: ClassGroup[] = [
+    { id: 'cls1', name: 'Terminale C', studentCount: 45, nextSession: '10:00 - Salle 12', attendanceRate: 92, pendingHomeworks: 12 },
+    { id: 'cls2', name: '1ère D', studentCount: 52, nextSession: '14:00 - Labo 2', attendanceRate: 88, pendingHomeworks: 0 },
+    { id: 'cls3', name: '2nde A', studentCount: 60, nextSession: 'Demain 08:00', attendanceRate: 95, pendingHomeworks: 45 },
+];
 
 export const SUBJECTS: Subject[] = [
   { id: 'math', name: 'Mathématiques', icon: 'Calculator', progress: 75, color: 'bg-blue-500' },

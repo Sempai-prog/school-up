@@ -6,6 +6,7 @@
 export type GradeLevel = '6eme' | '5eme' | '4eme' | '3eme' | '2nde' | '1ere' | 'tle';
 export type StepStatus = 'locked' | 'current' | 'completed';
 export type ChapterStatus = 'locked' | 'current' | 'completed';
+export type AppTheme = 'light' | 'dark' | 'neon'; // NEW: Theme definition
 
 // --- ATOMIC CONTENT TYPES ---
 
@@ -131,6 +132,17 @@ export interface Sanction {
   severity: 'low' | 'medium' | 'high';
 }
 
+export interface Quest {
+  id: string;
+  title: string;
+  target: number;
+  current: number;
+  xpReward: number;
+  icon: string; // Lucide icon name
+  completed: boolean;
+  claimed: boolean;
+}
+
 export interface User {
   id: string;
   name: string;
@@ -142,9 +154,22 @@ export interface User {
   avatarUrl: string;
   role: 'student' | 'teacher';
   isPremium: boolean;
+  theme: AppTheme; 
+  quests: Quest[]; // NEW: Daily Quests
   medical?: MedicalInfo;
   admin?: AdminInfo;
   discipline?: DisciplineRecord;
+}
+
+// --- TEACHER SPECIFIC ---
+
+export interface ClassGroup {
+  id: string;
+  name: string; // e.g. "Terminale C"
+  studentCount: number;
+  nextSession: string; // e.g. "10:00 - Salle 12"
+  attendanceRate: number; // Percentage
+  pendingHomeworks: number;
 }
 
 // ==========================================

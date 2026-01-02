@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ShoppingBag, Zap, Crown, User, Sparkles, LifeBuoy, Hourglass, Check, AlertCircle, ArrowLeft } from 'lucide-react';
+import { AppTheme } from '../types';
 
 interface StoreItem {
   id: string;
@@ -12,16 +13,18 @@ interface StoreItem {
   color: string;
   purchased: boolean;
   type: 'cosmetic' | 'service';
+  themeId?: AppTheme; // Optional Theme ID if item unlocks a theme
 }
 
 interface StoreScreenProps {
     userXp: number;
     onUpdateXp: (newXp: number) => void;
     onUpgrade?: () => void;
+    onApplyTheme?: (theme: AppTheme) => void; // New callback
     onBack?: () => void;
 }
 
-const StoreScreen: React.FC<StoreScreenProps> = ({ userXp, onUpdateXp, onUpgrade, onBack }) => {
+const StoreScreen: React.FC<StoreScreenProps> = ({ userXp, onUpdateXp, onUpgrade, onApplyTheme, onBack }) => {
   const [activeTab, setActiveTab] = useState<'cosmetic' | 'service'>('service');
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error', message: string } | null>(null);
 
@@ -32,16 +35,29 @@ const StoreScreen: React.FC<StoreScreenProps> = ({ userXp, onUpdateXp, onUpgrade
     { id: 's3', name: 'Joker Retard', description: '+24h pour rendre un devoir sans pénalité.', price: 800, type: 'service', icon: <Hourglass size={24} />, color: 'bg-purple-500', purchased: false },
     // Cosmetics
     { id: 'c1', name: 'Avatar Ninja', description: 'Débloque le style Ninja pour ton profil.', price: 1200, type: 'cosmetic', icon: <User size={24} />, color: 'bg-slate-800', purchased: false },
-    { id: 'c2', name: 'Thème Néon', description: 'Interface sombre avec accents fluo.', price: 1500, type: 'cosmetic', icon: <Zap size={24} />, color: 'bg-fuchsia-500', purchased: false },
+    { id: 'c2', name: 'Thème Néon', description: 'Interface sombre avec accents fluo.', price: 500, type: 'cosmetic', icon: <Zap size={24} />, color: 'bg-fuchsia-500', purchased: false, themeId: 'neon' },
   ]);
 
   const handlePurchase = (item: StoreItem) => {
-    if (item.purchased) return;
+    // If already purchased, maybe toggle feature (like Theme)
+    if (item.purchased) {
+        if (item.type === 'cosmetic' && item.themeId && onApplyTheme) {
+            onApplyTheme(item.themeId);
+            setFeedback({ type: 'success', message: `${item.name} appliqué !` });
+            setTimeout(() => setFeedback(null), 2000);
+        }
+        return;
+    }
 
     if (userXp >= item.price) {
         // Handle Premium specifically
         if (item.id === 's2' && onUpgrade) {
             onUpgrade();
+        }
+
+        // Apply Theme immediately upon purchase if it's a theme
+        if (item.themeId && onApplyTheme) {
+            onApplyTheme(item.themeId);
         }
 
         // Success Transaction
@@ -142,7 +158,7 @@ const StoreScreen: React.FC<StoreScreenProps> = ({ userXp, onUpdateXp, onUpgrade
 
                     <button
                         onClick={() => handlePurchase(item)}
-                        disabled={item.purchased}
+                        disabled={item.purchased && item.type === 'service'} // Allow clicking cosmetic to re-apply
                         className={`
                             px-4 py-2 rounded-xl font-bold text-xs flex flex-col items-center min-w-[80px] transition-all
                             ${item.purchased 
@@ -152,7 +168,11 @@ const StoreScreen: React.FC<StoreScreenProps> = ({ userXp, onUpdateXp, onUpgrade
                         `}
                     >
                         {item.purchased ? (
-                            <div className="flex items-center gap-1"><Check size={14} /> Actif</div>
+                            item.type === 'cosmetic' ? (
+                                <div className="flex items-center gap-1 text-indigo-600">Appliquer</div>
+                            ) : (
+                                <div className="flex items-center gap-1"><Check size={14} /> Actif</div>
+                            )
                         ) : (
                             <>
                                 <span>Acheter</span>
