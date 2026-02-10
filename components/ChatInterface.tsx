@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Send, Phone, Video, MoreVertical } from 'lucide-react';
+import { ArrowLeft, Send, Phone, Video, MoreVertical, Loader2 } from 'lucide-react';
 import { Thread, Message } from '../types';
 import { MOCK_CHAT_HISTORY } from '../constants';
 import { motion } from 'framer-motion';
@@ -12,6 +12,7 @@ interface ChatInterfaceProps {
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ thread, onBack }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -25,7 +26,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ thread, onBack }) => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!inputText.trim()) return;
 
     const newMessage: Message = {
@@ -35,24 +36,74 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ thread, onBack }) => {
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
+    // Update local state immediately for responsiveness
     setMessages(prev => [...prev, newMessage]);
     setInputText('');
-    
-    // Simulate Auto-Reply
-    setTimeout(() => {
-        const reply: Message = {
-            id: (Date.now() + 1).toString(),
-            text: thread.contactRole === 'AI Assistant' 
-                ? "Intéressant. Peux-tu développer ton raisonnement ?" 
-                : "C'est noté, je regarderai ça plus tard.",
-            sender: 'other',
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        };
-        setMessages(prev => [...prev, reply]);
-        scrollToBottom();
-    }, 2000);
+    setIsLoading(true);
+    scrollToBottom();
 
-    setTimeout(scrollToBottom, 100);
+    // Check if we are talking to the AI Assistant
+    // In MOCK_THREADS, the AI is typically defined with a specific role
+    if (thread.contactRole === 'Assistant IA' || thread.contactRole === 'AI Assistant') {
+        try {
+            // Prepare history for API (simplified)
+            // Ideally map 'me' -> 'user', 'other' -> 'model'
+            // We take the last few messages to keep context without overloading tokens
+            const history = messages.slice(-10).map(m => ({
+                role: m.sender === 'me' ? 'user' : 'model',
+                parts: [{ text: m.text }]
+            }));
+
+            const response = await fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message: newMessage.text,
+                    history: history
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.error) {
+                console.error("API Error:", data.error);
+                throw new Error(data.error);
+            }
+
+            const reply: Message = {
+                id: (Date.now() + 1).toString(),
+                text: data.text,
+                sender: 'other',
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            };
+            setMessages(prev => [...prev, reply]);
+        } catch (error) {
+            console.error("Chat Error:", error);
+            const errorReply: Message = {
+                id: (Date.now() + 1).toString(),
+                text: "Désolé, je ne peux pas répondre pour le moment. (Erreur connexion)",
+                sender: 'other',
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            };
+            setMessages(prev => [...prev, errorReply]);
+        } finally {
+            setIsLoading(false);
+            scrollToBottom();
+        }
+    } else {
+        // Standard Mock Reply for other users (Human teachers/students)
+        setTimeout(() => {
+            const reply: Message = {
+                id: (Date.now() + 1).toString(),
+                text: "C'est noté, je regarderai ça plus tard.",
+                sender: 'other',
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            };
+            setMessages(prev => [...prev, reply]);
+            setIsLoading(false);
+            scrollToBottom();
+        }, 1500);
+    }
   };
 
   return (
@@ -100,6 +151,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ thread, onBack }) => {
                  </motion.div>
              );
          })}
+         {isLoading && (
+             <div className="flex justify-start">
+                 <div className="bg-white px-4 py-3 rounded-2xl rounded-bl-none shadow-sm flex items-center gap-2">
+                     <Loader2 size={16} className="animate-spin text-slate-500" />
+                     <span className="text-xs text-slate-500">Écrit...</span>
+                 </div>
+             </div>
+         )}
          <div ref={messagesEndRef} />
       </div>
 
@@ -109,13 +168,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ thread, onBack }) => {
             type="text" 
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+            onKeyDown={(e) => e.key === 'Enter' && !isLoading && handleSend()}
             placeholder="Écrire un message..."
-            className="flex-1 bg-slate-100 text-slate-800 rounded-full px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+            disabled={isLoading}
+            className="flex-1 bg-slate-100 text-slate-800 rounded-full px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:opacity-50"
           />
           <button 
             onClick={handleSend}
-            disabled={!inputText.trim()}
+            disabled={!inputText.trim() || isLoading}
             className="p-3 bg-blue-600 text-white rounded-full shadow-lg shadow-blue-200 disabled:opacity-50 disabled:shadow-none hover:bg-blue-700 transition-colors"
           >
               <Send size={20} />
